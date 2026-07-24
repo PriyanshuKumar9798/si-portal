@@ -48,6 +48,24 @@ export default function SiDetailScreen() {
     enabled: !!id,
   });
 
+  // Pull the store's current burn forecast so we can mark lines whose SKUs
+  // are at risk of running out before the next indent. The Cycle → Generate
+  // → SI Detail flow depends on this to surface "critical" lines the moment
+  // the user lands here — but it's just as useful when they open any Draft
+  // SI directly, so we always fetch it for drafts. Skip on locked SIs since
+  // those are historical.
+  const storeId = q.data?.store.id;
+  const isDraft = q.data?.status === 'draft';
+  const forecastQ = useQuery({
+    queryKey: ['stock-forecast', storeId],
+    queryFn: () => api.getStockForecast(storeId!),
+    enabled: !!storeId && !!isDraft,
+  });
+  const criticalSkus = useMemo(
+    () => new Set((forecastQ.data?.atRiskItems ?? []).map((it) => it.sku)),
+    [forecastQ.data],
+  );
+
   const saveMut = useMutation({
     mutationFn: () => {
       const editCount = Object.keys(pending).length;
@@ -226,6 +244,7 @@ export default function SiDetailScreen() {
           setQty={(lineId, val) => setPending((p) => ({ ...p, [lineId]: val }))}
           resetLine={(lineId) => setPending((p) => { const n = { ...p }; delete n[lineId]; return n; })}
           editable={editing}
+          criticalSkus={criticalSkus}
         />
       </SectionCard>
 
@@ -457,13 +476,16 @@ function SourceCard({ origin, trigger }: { origin: SiDetail['origin']; trigger: 
 }
 
 function LinesTable({
-  data, pending, setQty, resetLine, editable,
+  data, pending, setQty, resetLine, editable, criticalSkus,
 }: {
   data: SiDetail;
   pending: Record<string, number | null>;
   setQty: (lineId: string, v: number | null) => void;
   resetLine: (lineId: string) => void;
   editable: boolean;
+  /** SKUs the store's burn forecast marked at-risk. Lines matching these
+   *  SKUs render with a red item name and a CRITICAL chip. */
+  criticalSkus: Set<string>;
 }) {
   const { c } = useTheme();
   const th: TextStyle = {
@@ -504,6 +526,7 @@ function LinesTable({
           const effectiveFinal = effectiveEdited ?? l.suggestedQty;
           const isOverridden = effectiveEdited !== null && effectiveEdited !== undefined && effectiveEdited !== l.suggestedQty;
           const hasExc = excSkus.has(l.sku);
+          const isCritical = criticalSkus.has(l.sku);
           return (
             <View key={l.id} style={{
               flexDirection: 'row',
@@ -513,9 +536,32 @@ function LinesTable({
               alignItems: 'center',
             }}>
               <Text style={{ width: 110, color: c.fg, fontSize: font.body, fontFamily, fontVariant: ['tabular-nums'] }}>{l.sku}</Text>
-              <View style={{ flex: 1, minWidth: 220 }}>
-                <Text style={{ color: c.fg, fontSize: font.body, fontWeight: weight.medium as TextStyle['fontWeight'], fontFamily }} numberOfLines={1}>{l.itemName}</Text>
-                {hasExc && <Text style={{ color: c.rTx, fontSize: font.caption, marginTop: 2, fontFamily }}>Has exception</Text>}
+              <View style={{ flex: 1, minWidth: 220, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{
+                    color: isCritical ? c.rTx : c.fg,
+                    fontSize: font.body,
+                    fontWeight: (isCritical ? weight.semibold : weight.medium) as TextStyle['fontWeight'],
+                    fontFamily,
+                  }} numberOfLines={1}>{l.itemName}</Text>
+                  {hasExc && <Text style={{ color: c.rTx, fontSize: font.caption, marginTop: 2, fontFamily }}>Has exception</Text>}
+                </View>
+                {isCritical && (
+                  <View style={{
+                    backgroundColor: c.chipRedBorder,
+                    paddingVertical: 2, paddingHorizontal: 8,
+                    borderRadius: radius.pill,
+                  }}>
+                    <Text style={{
+                      color: '#ffffff',
+                      fontSize: font.micro,
+                      fontWeight: weight.bold as TextStyle['fontWeight'],
+                      letterSpacing: 0.5,
+                      textTransform: 'uppercase',
+                      fontFamily,
+                    }}>Critical</Text>
+                  </View>
+                )}
               </View>
               <Text style={{ width: 140, color: c.mut, fontSize: font.body, fontFamily }} numberOfLines={1}>{l.category}</Text>
 

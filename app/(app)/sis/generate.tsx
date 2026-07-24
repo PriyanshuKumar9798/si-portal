@@ -4,10 +4,10 @@
 // on tablet/phone. Partial-failure handling is explicit — the success card
 // lists both `succeeded` and `failed` with reasons.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, type ViewStyle, type TextStyle } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../../src/theme/ThemeContext';
 import { api } from '../../../src/api/client';
 import type { GenerateSiResult } from '../../../src/api/types';
@@ -16,21 +16,44 @@ import { BackLink } from '../../../src/components/BackLink';
 import { HelpPopover } from '../../../src/components/HelpPopover';
 import { font, radius, weight, fontFamily, space } from '../../../src/theme/tokens';
 import { todayIso, shortDayYear } from '../../../src/utils/format';
-import { IconArrowLeft, IconRefresh, IconPlus, IconCheck, IconClose } from '../../../src/components/icons';
+import { IconArrowLeft, IconRefresh, IconPlus, IconCheck, IconClose, IconCalendar } from '../../../src/components/icons';
 import { useToast } from '../../../src/components/Toast';
 
 export default function GenerateScreen() {
   const { c } = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
+  // `from=cycle&storeId=...` arrives when this page opens from the Cycle
+  // tab. In that case: prefill the store, keep the user on this page after
+  // success (no auto-nav), and render a "critical items" post-success view
+  // instead of the plain "N drafts created" banner.
+  const params = useLocalSearchParams<{ from?: string; storeId?: string }>();
+  const fromCycle = params.from === 'cycle';
+  const prefilledStoreId = typeof params.storeId === 'string' ? params.storeId : null;
 
   const storesQ = useQuery({ queryKey: ['stores'], queryFn: () => api.listStores() });
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(prefilledStoreId ? [prefilledStoreId] : []);
   const [query, setQuery] = useState('');
-  const [runDate, setRunDate] = useState<string>(todayIso());
-  const [bufferDays, setBufferDays] = useState('2');
-  const [leadOverride, setLeadOverride] = useState('');
+  // Run date is locked to today. The store persona should never generate an
+  // SI for an arbitrary date; nightly cron handles the historical dates and
+  // the manual case is always "generate for today". Kept in state so a
+  // future admin override could unlock it, but the form UI is read-only.
+  const runDate = todayIso();
+  // Indent-cycle interval — how many days of demand this indent covers.
+  // Default 21 (three weeks) — most store cycles land in the 20-30-day
+  // range, so a 21-day default keeps the common case one-tap.
+  const [indentDays, setIndentDays] = useState('21');
   const [result, setResult] = useState<GenerateSiResult | null>(null);
+
+  // If the params arrive after the initial render (e.g., HMR), re-sync
+  // the store selection to the prefilled value.
+  useEffect(() => {
+    if (prefilledStoreId && !selected.includes(prefilledStoreId)) {
+      setSelected([prefilledStoreId]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefilledStoreId]);
+
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -51,8 +74,13 @@ export default function GenerateScreen() {
     mutationFn: (storeIds: string[]) => api.generate({
       storeIds,
       runDate,
-      bufferDays: Number(bufferDays) || 0,
-      leadTimeOverrideDays: leadOverride.trim() ? Number(leadOverride) : null,
+      indentDays: Number(indentDays) || 3,
+      // Buffer + lead-time overrides used to live in the form. The store
+      // persona doesn't need those knobs — per-store defaults handle
+      // buffer, and lead time comes from the DC config. Sent as 0 / null
+      // so the API contract stays satisfied.
+      bufferDays: 0,
+      leadTimeOverrideDays: null,
     }),
     onSuccess: (r) => {
       setResult(r);
@@ -80,8 +108,18 @@ export default function GenerateScreen() {
       // full success. On partial failure we stay put so the user sees WHICH
       // stores failed via the persistent red banner — quietly navigating
       // would swallow the failure list.
+      //
+      // Cycle-context branch: open the newly-generated SI's detail page so
+      // the user can review the critical items right where they're editable
+      // (the Detail page marks at-risk lines red + CRITICAL chip). The
+      // regular Generate flow still lands on the SI list.
       if (r.failed.length === 0 && r.succeeded.length > 0) {
-        setTimeout(() => router.push(`/sis?runDate=${runDate}` as never), 700);
+        if (fromCycle) {
+          const siId = r.succeeded[0].siId;
+          setTimeout(() => router.push(`/sis/${siId}` as never), 500);
+        } else {
+          setTimeout(() => router.push(`/sis?runDate=${runDate}` as never), 700);
+        }
       }
     },
     onError: (e: unknown) => {
@@ -153,6 +191,7 @@ export default function GenerateScreen() {
               ))}
             </View>
           )}
+
         </View>
       )}
 
@@ -247,25 +286,32 @@ export default function GenerateScreen() {
         <View style={{ flex: 1, minWidth: 280 }}>
           <SectionCard title="Run configuration" subtitle="These apply to every store you generate for.">
             <View style={{ padding: 16, gap: 14 }}>
+              {/* Run date is intentionally read-only. The store persona
+                  never generates for a historical or future date — every
+                  manual run is "today's demand", the nightly cron handles
+                  the rest. Rendered as a static pill so the layout still
+                  reads as a form field. */}
+              <View style={{ gap: 6 }}>
+                <MicroLabel>Run date</MicroLabel>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 8,
+                  borderWidth: 1, borderColor: c.border, backgroundColor: c.bg,
+                  borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: 12,
+                }}>
+                  <IconCalendar size={14} color={c.mut} />
+                  <Text style={{ color: c.fg, fontSize: font.bodyLg, fontWeight: weight.medium as TextStyle['fontWeight'], fontFamily }}>
+                    {shortDayYear(runDate)}
+                  </Text>
+                  <Text style={{ color: c.mut, fontSize: font.caption, fontFamily, marginLeft: 4 }}>
+                    (today)
+                  </Text>
+                </View>
+              </View>
               <Field
-                label="Run date"
-                value={runDate}
-                onChangeText={setRunDate}
-                placeholder="YYYY-MM-DD"
-                autoCapitalize="none"
-              />
-              <Field
-                label="Buffer days"
-                value={bufferDays}
-                onChangeText={setBufferDays}
-                placeholder="2"
-                keyboardType="numeric"
-              />
-              <Field
-                label="Lead time override (optional)"
-                value={leadOverride}
-                onChangeText={setLeadOverride}
-                placeholder="Leave blank to use per-store default"
+                label="Indent days"
+                value={indentDays}
+                onChangeText={setIndentDays}
+                placeholder="21"
                 keyboardType="numeric"
               />
               <View style={{ height: 4 }} />
@@ -327,3 +373,4 @@ export default function GenerateScreen() {
     </Screen>
   );
 }
+

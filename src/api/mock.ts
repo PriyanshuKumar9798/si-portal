@@ -14,7 +14,7 @@
 
 import type {
   SiSummary, SiDetail, SiLine, SiException, Discrepancy,
-  StoreLite, ExceptionType, SiOrigin, SiTrigger,
+  StoreLite, ExceptionType, SiOrigin, SiTrigger, StockForecast, StockForecastItem,
   ListSiFilter, GenerateSiRequest, GenerateSiResult, SaveLinesRequest,
   AuthLoginRequest, AuthLoginResponse, ApiError,
 } from './types';
@@ -316,7 +316,11 @@ export const mockApi = {
       const fresh = makeSi(s, body.runDate, {
         origin: 'manual', trigger: 'catch_up', status: 'draft',
         leadTimeDays: body.leadTimeOverrideDays ?? undefined,
-        bufferDays: body.bufferDays,
+        // Buffer the SI stores is (indentDays + bufferDays) — indentDays is
+        // the demand horizon this indent must cover, bufferDays is the
+        // safety extra. The mock rolls both into the SI's stored bufferDays
+        // field so the display side stays unchanged.
+        bufferDays: body.bufferDays + (body.indentDays || 0),
       }, new Date().toISOString());
       if (existing >= 0) store.sis[existing] = fresh;
       else store.sis.push(fresh);
@@ -382,6 +386,91 @@ export const mockApi = {
       rows = rows.filter((r) => set.has(r.storeId));
     }
     return rows;
+  },
+
+  // ─── Stock forecast ──────────────────────────────────────────────────────
+  // Deterministic per-store burn projection. Same inputs → same numbers so
+  // screenshots stay stable. Item state pulls from CATALOG (base = full-
+  // pantry cases) and rolls a per-store deterministic scaling for both
+  // current stock and average daily consumption. Days-until-stockout is
+  // ceil(stock / adc); items with a smaller runway than daysUntilNextIndent
+  // are "at risk".
+  async getStockForecast(storeId: string): Promise<StockForecast> {
+    await wait(180, 380);
+    const s = stores.find((x) => x.id === storeId);
+    if (!s) {
+      const err: ApiError = { status: 404, message: `Store not found: ${storeId}` };
+      throw err;
+    }
+    // Cycle interval — pick 2, 3, 4, or 7 days per store. Deterministic hash
+    // of storeId keeps the value stable across reloads.
+    const cycleChoices = [2, 3, 4, 7];
+    const cycleDays = cycleChoices[Math.floor(seed(storeId, 'cycle') * cycleChoices.length)];
+    const cycleLabel = cycleDays === 7 ? 'Weekly' : `Every ${cycleDays} days`;
+
+    // Last indent: use the newest LOCKED SI for this store if one exists,
+    // otherwise pretend it happened `cycleDays` ago so the maths land.
+    const locked = store.sis
+      .filter((r) => r.store.id === storeId && r.status === 'locked')
+      .sort((a, b) => a.runDate.localeCompare(b.runDate));
+    const lastIndentDate = locked.length ? locked[locked.length - 1].runDate : todayIsoLocal(-cycleDays);
+    // Next indent falls `cycleDays` after the last one.
+    const nextDate = new Date(`${lastIndentDate}T00:00:00`);
+    nextDate.setDate(nextDate.getDate() + cycleDays);
+    const nextIndentDate = `${nextDate.getFullYear()}-${String(nextDate.getMonth()+1).padStart(2,'0')}-${String(nextDate.getDate()).padStart(2,'0')}`;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const daysUntilNextIndent = Math.max(0, Math.ceil((nextDate.getTime() - today.getTime()) / 86_400_000));
+
+    // Per-item stock + ADC. `stockFactor` in [0.2, 1.2] roughly says how
+    // heavily stocked this SKU is right now; `adcFactor` in [0.05, 0.35] is
+    // its share of base consumed per day. Values seeded so the same store
+    // always shows the same story (helpful for demos + screenshots).
+    const items: StockForecastItem[] = CATALOG.map((item) => {
+      const stockRoll = seed(storeId, item.sku, 'stock');
+      const adcRoll = seed(storeId, item.sku, 'adc');
+      // Roughly a third of SKUs per store come in "hot" — depleted stock,
+      // higher consumption — so most stores actually surface at-risk lines
+      // instead of the boring "nothing at risk" state. Deterministic per
+      // store+sku so demos stay stable.
+      const isHot = seed(storeId, item.sku, 'hot') < 0.35;
+      const stockFactor = isHot ? 0.05 + stockRoll * 0.20 : 0.4 + stockRoll * 0.8;
+      const adcFactor = isHot ? 0.25 + adcRoll * 0.35 : 0.05 + adcRoll * 0.15;
+      const currentStockCases = Math.max(1, Math.round(item.base * stockFactor));
+      const adc = Math.max(0.2, +(item.base * adcFactor / 3).toFixed(1));
+      const days = Math.ceil(currentStockCases / adc);
+      const runsOut = new Date(today);
+      runsOut.setDate(runsOut.getDate() + days);
+      const runsOutOn = `${runsOut.getFullYear()}-${String(runsOut.getMonth()+1).padStart(2,'0')}-${String(runsOut.getDate()).padStart(2,'0')}`;
+      return {
+        sku: item.sku,
+        itemName: item.itemName,
+        category: item.category,
+        currentStockCases,
+        adc,
+        daysUntilStockout: days,
+        runsOutOn,
+      };
+    });
+
+    const atRiskItems = items
+      .filter((it) => it.daysUntilStockout < daysUntilNextIndent)
+      .sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
+    const safeItemsCount = items.length - atRiskItems.length;
+    const daysOfStockLeft = items.reduce((min, it) => Math.min(min, it.daysUntilStockout), Number.POSITIVE_INFINITY);
+
+    return {
+      storeId: s.id,
+      storeName: s.name,
+      storeCode: s.code,
+      cycleDays,
+      cycleLabel,
+      lastIndentDate,
+      nextIndentDate,
+      daysUntilNextIndent,
+      daysOfStockLeft: Number.isFinite(daysOfStockLeft) ? daysOfStockLeft : 0,
+      atRiskItems,
+      safeItemsCount,
+    };
   },
 };
 

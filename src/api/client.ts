@@ -7,7 +7,7 @@
 // sign-in / sign-out.
 
 import type {
-  SiSummary, SiDetail, SiException, Discrepancy,
+  SiSummary, SiDetail, SiException, Discrepancy, StockForecast,
   ListSiFilter, GenerateSiRequest, GenerateSiResult,
   SaveLinesRequest, AuthLoginRequest, AuthLoginResponse, ApiError,
 } from './types';
@@ -101,6 +101,8 @@ const realApi = {
     const s = p.toString();
     return req<Discrepancy[]>(`/discrepancies${s ? `?${s}` : ''}`, { method: 'GET' });
   },
+  getStockForecast: (storeId: string) =>
+    req<StockForecast>(`/stores/${encodeURIComponent(storeId)}/stock-forecast`, { method: 'GET' }),
 };
 
 export const api = MOCK_ENABLED ? mockApi : realApi;

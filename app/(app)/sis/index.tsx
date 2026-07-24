@@ -26,7 +26,7 @@ import { api } from '../../../src/api/client';
 import type { SiSummary, SiStatus } from '../../../src/api/types';
 import { Body, Button, ErrorState, EmptyState, LoadingState, MetricCard, PageHeader, Screen, SectionCard, Segment, StatusChip, MetaChip, FilterChip } from '../../../src/components/ui';
 import { MultiSelectPill } from '../../../src/components/MultiSelectPill';
-import { IconTrash, IconCalendar, IconChevronDown, IconChevronUp, IconPlus, IconBulb, IconUser, IconClock, IconLock, IconAlert } from '../../../src/components/icons';
+import { IconTrash, IconCalendar, IconChevronDown, IconChevronUp, IconBulb, IconUser, IconClock, IconLock, IconAlert } from '../../../src/components/icons';
 import { HelpPopover } from '../../../src/components/HelpPopover';
 import { Calendar } from '../../../src/components/Calendar';
 import { useToast } from '../../../src/components/Toast';
@@ -179,14 +179,7 @@ export default function SiListScreen() {
             )}
           </>
         }
-        action={
-          <Button
-            label="Generate SIs"
-            leading={<IconPlus size={15} color="#fff" />}
-            tooltip="Create fresh draft SIs for one or more of your stores now, without waiting for the 9 pm run."
-            onPress={() => router.push('/sis/generate')}
-          />
-        }
+        // Generate CTA lives in the top nav — no duplicate button here.
         contentPadding={false}
       >
         {listQ.isLoading ? (

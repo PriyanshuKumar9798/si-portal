@@ -25,29 +25,33 @@ interface NavItem {
    *  items at once. */
   match: (path: string) => boolean;
 }
-// Generate is intentionally NOT a top-level nav item. It is a sub-flow of SIs
-// (accessed via the "Generate SIs" button on the list), and treating it as a
-// peer was misleading — a new user reads it as an alternative to viewing SIs
-// rather than a way to create them. Cutting it also removes the active-state
-// bug where /sis/generate lit up both "SIs" and "Generate" at once.
+// Nav layout for the store-user persona:
+//   • SIs      — daily review landing.
+//   • Generate — creates a fresh draft SI for a date + indent interval.
+//   • Cycle    — burn forecast: when the current stock runs out relative to
+//                the next indent, and which items are at risk before it.
+//
+// Exceptions + Discrepancies are ADMIN-only pages. The routes still exist
+// under app/(app)/ so a direct URL works, but they are intentionally
+// omitted from the nav so store owners don't see them.
 const NAV: NavItem[] = [
   {
     label: 'SIs',
     href: '/sis',
     tooltip: 'Draft and locked indents for your stores. This is the daily-review landing page.',
-    match: (p) => p === '/sis' || p.startsWith('/sis/'),
+    match: (p) => p === '/sis' || (p.startsWith('/sis/') && p !== '/sis/generate'),
   },
   {
-    label: 'Exceptions',
-    href: '/exceptions',
-    tooltip: 'Every line the engine couldn\'t compute today. Fix the data, then regenerate.',
-    match: (p) => p.startsWith('/exceptions'),
+    label: 'Generate',
+    href: '/sis/generate',
+    tooltip: 'Create a fresh draft SI: pick a date and how many days of stock it should cover.',
+    match: (p) => p === '/sis/generate',
   },
   {
-    label: 'Discrepancies',
-    href: '/discrepancies',
-    tooltip: 'The subset of exceptions caused by unmapped SKUs or missing unit conversions.',
-    match: (p) => p.startsWith('/discrepancies'),
+    label: 'Cycle',
+    href: '/cycle',
+    tooltip: 'Next indent date, days of stock remaining, and items at risk of running out before then.',
+    match: (p) => p.startsWith('/cycle'),
   },
 ];
 

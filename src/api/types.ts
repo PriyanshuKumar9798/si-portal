@@ -95,6 +95,8 @@ export interface GenerateSiRequest {
   storeIds: string[];
   runDate: string;              // ISO YYYY-MM-DD
   bufferDays: number;
+  /** How many days of stock this SI should cover, i.e. the indent cycle. */
+  indentDays: number;
   leadTimeOverrideDays?: number | null;
 }
 
@@ -120,6 +122,40 @@ export interface AuthLoginResponse {
     role: 'store' | 'cluster' | 'central' | 'admin';
     storeIds: string[];         // scoping — never trust the client, backend re-checks
   };
+}
+
+// ─── Stock forecast / cycle view ────────────────────────────────────────────
+//
+// The Cycle page shows a store's indent rhythm and burn forecast:
+//   • cycleDays        — how often this store submits an SI (interval).
+//   • lastIndentDate   — the most recent locked SI's run date.
+//   • nextIndentDate   — expected next SI date (last + cycleDays).
+//   • daysOfStockLeft  — worst-case runway across all SKUs.
+//   • atRiskItems      — SKUs that will stock out BEFORE nextIndentDate.
+//   • safeItemsCount   — SKUs that survive the current cycle.
+
+export interface StockForecastItem {
+  sku: string;
+  itemName: string;
+  category: string;
+  currentStockCases: number;
+  adc: number;                     // avg daily consumption in cases/day
+  daysUntilStockout: number;       // ceil(stock / adc)
+  runsOutOn: string;               // ISO YYYY-MM-DD
+}
+
+export interface StockForecast {
+  storeId: string;
+  storeName: string;
+  storeCode: string;
+  cycleDays: number;               // interval between SIs, e.g. 3
+  cycleLabel: string;              // human string, e.g. "Every 3 days"
+  lastIndentDate: string | null;   // ISO YYYY-MM-DD, null if none yet
+  nextIndentDate: string;          // ISO YYYY-MM-DD
+  daysUntilNextIndent: number;     // ceil((nextIndent - today) / 1 day)
+  daysOfStockLeft: number;         // min of daysUntilStockout across all items
+  atRiskItems: StockForecastItem[];
+  safeItemsCount: number;
 }
 
 // ─── Error shape (matches Nest's default ExceptionFilter shape) ─────────────
