@@ -18,3 +18,8 @@ npm-debug.*
 .idea/
 .expo-shared/
 expo-env.d.ts
+
+# Local tooling (Claude Code session dir, one-off design references)
+.claude/
+.claude-design-ref.html
+.vercel/

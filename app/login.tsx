@@ -26,7 +26,9 @@ export default function LoginScreen() {
     if (!authLoading && isAuthenticated) router.replace('/sis');
   }, [authLoading, isAuthenticated, router]);
 
-  const disabled = submitting || email.trim().length === 0 || password.length === 0;
+  // Dev bypass: empty inputs are fine — clicking Sign in always works. When
+  // the real backend lands, re-add the `email.trim().length === 0 || …` gate.
+  const disabled = submitting;
 
   const onSubmit = async () => {
     setError(null);
@@ -36,7 +38,7 @@ export default function LoginScreen() {
       router.replace('/sis');
     } catch (e) {
       const err = e as ApiError;
-      setError(err?.message ?? 'Could not sign in — check your email and password.');
+      setError(err?.message ?? 'Could not sign in.');
     } finally {
       setSubmitting(false);
     }
@@ -113,7 +115,7 @@ export default function LoginScreen() {
             label="Continue with Google"
             variant="secondary"
             fullWidth
-            onPress={() => setError('Google SSO is not enabled yet — please sign in with email + password.')}
+            onPress={() => setError('Google SSO is not enabled yet. Please sign in with email and password.')}
           />
         </View>
 

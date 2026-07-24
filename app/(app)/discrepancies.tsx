@@ -3,12 +3,15 @@
 // (2 metric cards) so the user can see the total counts at a glance.
 
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, type TextStyle } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, type TextStyle, type ViewStyle } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '../../src/theme/ThemeContext';
 import { api } from '../../src/api/client';
 import type { Discrepancy } from '../../src/api/types';
 import { Body, Button, EmptyState, ErrorState, FilterChip, LoadingState, MetricCard, PageHeader, Screen, SectionCard } from '../../src/components/ui';
+import { BackLink } from '../../src/components/BackLink';
+import { HelpPopover } from '../../src/components/HelpPopover';
+import { IconDownload, IconAlert, IconAlertTriangle, IconFileText } from '../../src/components/icons';
 import { font, radius, weight, fontFamily, space } from '../../src/theme/tokens';
 import { shortDayYear, todayIso } from '../../src/utils/format';
 import { buildCsv, downloadCsv } from '../../src/utils/csv';
@@ -36,13 +39,20 @@ export default function DiscrepanciesScreen() {
 
   return (
     <Screen>
+      <BackLink />
       <PageHeader
         title="Mapping discrepancies"
-        subtitle="Unmapped SKUs and missing unit-conversion factors — data cleanup that unblocks the engine."
+        subtitle="Unmapped SKUs and missing unit-conversion factors. Data cleanup that unblocks the engine."
         action={
           <Button
             label="Export CSV"
             variant="secondary"
+            leading={<IconDownload size={16} color={c.fg} />}
+            tooltip={
+              rows.length === 0
+                ? 'Nothing to export yet.'
+                : `Download all ${rows.length} discrepanc${rows.length === 1 ? 'y' : 'ies'} as a CSV.`
+            }
             onPress={() => downloadCsv(`Discrepancies_${runDate}.csv`, buildCsv<Discrepancy>([
               { header: 'Type', get: (r) => r.type },
               { header: 'Store', get: (r) => r.storeName },
@@ -58,11 +68,29 @@ export default function DiscrepanciesScreen() {
         }
       />
 
-      {/* Summary counts */}
-      <View style={{ flexDirection: 'row', gap: space.md }}>
-        <MetricCard label="Unmapped SKUs" value={q.isLoading ? '—' : counts.UNMAPPED} />
-        <MetricCard label="Missing conversions" value={q.isLoading ? '—' : counts.MISSING_CONVERSION} />
-        <MetricCard label="Total rows" value={q.isLoading ? '—' : rows.length} />
+      {/* Summary counts — wraps at narrow widths */}
+      <View style={{ flexDirection: 'row', gap: space.md, flexWrap: 'wrap' }}>
+        <MetricCard
+          label="Unmapped SKUs"
+          value={q.isLoading ? '–' : counts.UNMAPPED}
+          hint={rows.length > 0 ? `${counts.UNMAPPED} of ${rows.length} total` : 'Nothing flagged'}
+          icon={<IconAlertTriangle size={18} color={c.rTx} />}
+          iconTone="red"
+        />
+        <MetricCard
+          label="Missing conversions"
+          value={q.isLoading ? '–' : counts.MISSING_CONVERSION}
+          hint={rows.length > 0 ? `${counts.MISSING_CONVERSION} of ${rows.length} total` : 'Nothing flagged'}
+          icon={<IconAlert size={18} color={c.rTx} />}
+          iconTone="red"
+        />
+        <MetricCard
+          label="Total rows"
+          value={q.isLoading ? '–' : rows.length}
+          hint={shortDayYear(runDate)}
+          icon={<IconFileText size={18} color={c.sTx} />}
+          iconTone="neutral"
+        />
       </View>
 
       {/* Type-chip filters */}
@@ -111,6 +139,30 @@ export default function DiscrepanciesScreen() {
           <DiscrepanciesTable rows={rows} />
         )}
       </SectionCard>
+
+      <HelpPopover
+        title="Mapping discrepancies"
+        sections={[
+          {
+            heading: 'What this page is for',
+            body: 'A focused view of the two data issues that block the engine most often: SKUs that are unmapped, and SKUs that are missing a unit-to-case conversion factor.',
+          },
+          {
+            heading: 'Why they matter',
+            body: 'Unmapped SKUs are ignored by the engine, so they never appear on any SI even if the store needs them. Missing conversions mean the engine cannot express the suggested quantity in cases.',
+          },
+          {
+            heading: 'Steps to clear these',
+            numbered: true,
+            body: [
+              'Export the CSV.',
+              'Fix the product master offline (add mappings, add case conversion factors).',
+              'Wait for the next nightly sync, or regenerate the affected SIs manually.',
+              'The row disappears once the mapping is valid.',
+            ],
+          },
+        ]}
+      />
     </Screen>
   );
 }
@@ -128,6 +180,7 @@ function DiscrepanciesTable({ rows }: { rows: Discrepancy[] }) {
         <View style={{
           flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10,
           borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.card,
+          ...(Platform.OS === 'web' ? { position: 'sticky' as ViewStyle['position'], top: 0, zIndex: 2 } : null),
         }}>
           <Text style={[th, { width: 180 }]}>Type</Text>
           <Text style={[th, { width: 200 }]}>Store</Text>

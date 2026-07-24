@@ -7,15 +7,30 @@
 // SectionCard so the surrounding chrome (filters, chips, header) is always
 // visible.
 
-import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, type TextStyle } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, Platform, type TextStyle, type ViewStyle } from 'react-native';
+
+// Web-only sticky-header style. On native, `position: 'sticky'` isn't a
+// valid RN value, so this returns null and the header just scrolls with
+// the page. Every table on this screen (SI list, Detail lines, Exceptions,
+// Discrepancies) uses this identical pattern.
+const stickyHeader = (): ViewStyle | null =>
+  Platform.OS === 'web'
+    ? { position: 'sticky' as ViewStyle['position'], top: 0, zIndex: 2 }
+    : null;
+import { useOutsideClick } from '../../../src/hooks/useOutsideClick';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../../../src/theme/ThemeContext';
 import { api } from '../../../src/api/client';
 import type { SiSummary, SiStatus } from '../../../src/api/types';
 import { Body, Button, ErrorState, EmptyState, LoadingState, MetricCard, PageHeader, Screen, SectionCard, Segment, StatusChip, MetaChip, FilterChip } from '../../../src/components/ui';
 import { MultiSelectPill } from '../../../src/components/MultiSelectPill';
+import { IconTrash, IconCalendar, IconChevronDown, IconChevronUp, IconPlus, IconBulb, IconUser, IconClock, IconLock, IconAlert } from '../../../src/components/icons';
+import { HelpPopover } from '../../../src/components/HelpPopover';
+import { Calendar } from '../../../src/components/Calendar';
+import { useToast } from '../../../src/components/Toast';
+import { ConfirmDialog } from '../../../src/components/ConfirmDialog';
 import { font, radius, space, weight, fontFamily } from '../../../src/theme/tokens';
 import { refreshedAt, shortDayYear, todayIso } from '../../../src/utils/format';
 
@@ -24,7 +39,15 @@ export default function SiListScreen() {
   const router = useRouter();
   const qc = useQueryClient();
 
-  const [runDate, setRunDate] = useState<string>(todayIso());
+  // Pick up ?runDate=<iso> from the URL so the Generate flow can hand off
+  // to the list already scoped to the date it just generated for. Falls
+  // back to today if the param is missing (normal daily-review flow).
+  const params = useLocalSearchParams<{ runDate?: string }>();
+  const [runDate, setRunDate] = useState<string>(
+    (typeof params.runDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.runDate))
+      ? params.runDate
+      : todayIso(),
+  );
   const [storeIds, setStoreIds] = useState<string[]>([]);
   const [status, setStatus] = useState<SiStatus | 'all'>('all');
   const [confirmDelete, setConfirmDelete] = useState<SiSummary | null>(null);
@@ -37,11 +60,23 @@ export default function SiListScreen() {
   const listQ = useQuery({
     queryKey: ['sis', { runDate, storeIds, status }],
     queryFn: () => api.listSis({ runDate, storeIds: storeIds.length ? storeIds : undefined, status }),
+    // Keep the previous data visible while a filter switch refetches, so the
+    // metric strip + table don't flash em-dash / empty state for 200ms every
+    // time the user changes a pill.
+    placeholderData: (prev) => prev,
   });
 
+  const toast = useToast();
   const deleteMut = useMutation({
-    mutationFn: (id: string) => api.deleteSi(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['sis'] }),
+    mutationFn: (row: SiSummary) => api.deleteSi(row.id).then(() => row),
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: ['sis'] });
+      toast.show(`Draft SI for ${row.store.name} deleted.`, { tone: 'success' });
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { message?: string })?.message || 'Delete failed. Try again.';
+      toast.show(msg, { tone: 'error' });
+    },
   });
 
   const rows = listQ.data ?? [];
@@ -60,8 +95,8 @@ export default function SiListScreen() {
     totals.drafts === 0
       ? `All drafts for ${shortDayYear(runDate)} are already locked or none exist.`
       : excCount === 0
-      ? `${totals.drafts} draft SIs waiting on review — none have exceptions flagged.`
-      : `${totals.drafts} draft SIs waiting on review — start with the ${excCount} flagged with exceptions${flaggedNames.length ? ` (${flaggedNames.join(', ')})` : ''}.`;
+      ? `${totals.drafts} draft SIs waiting on review. None have exceptions flagged.`
+      : `${totals.drafts} draft SIs waiting on review. Start with the ${excCount} flagged with exceptions${flaggedNames.length ? ` (${flaggedNames.join(', ')})` : ''}.`;
 
   return (
     <Screen>
@@ -70,8 +105,8 @@ export default function SiListScreen() {
         subtitle={`Updated daily · last refreshed ${refreshedAt(new Date().toISOString())}`}
       />
 
-      {/* Filter pill row */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+      {/* Filter pill row — zIndex > below-siblings so open popovers overlay the KPIs. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', zIndex: 30, position: 'relative' }}>
         <RunDatePill value={runDate} onChange={setRunDate} />
         <MultiSelectPill
           label="Stores"
@@ -95,13 +130,32 @@ export default function SiListScreen() {
         />
       </View>
 
-      {/* 3-metric headline strip */}
-      <View style={{ flexDirection: 'row', gap: space.md }}>
-        <MetricCard label={`Total SIs · ${shortDayYear(runDate)}`} value={listQ.isLoading ? '—' : totals.total} />
-        <MetricCard label="Drafts awaiting review" value={listQ.isLoading ? '—' : totals.drafts}
-          valueSuffix={totals.drafts > 0 ? <StatusChip tone="draft" /> : null} />
-        <MetricCard label="Locked today" value={listQ.isLoading ? '—' : totals.locked}
-          valueSuffix={totals.locked > 0 ? <StatusChip tone="locked" /> : null} />
+      {/* 3-metric headline strip — icon + hero number + one-line context.
+          The label already says "drafts" and "locked", so the old status
+          chips beside the number were redundant. Ratios ("5 of 8") give
+          proportion at a glance, which a raw count can't. */}
+      <View style={{ flexDirection: 'row', gap: space.md, flexWrap: 'wrap' }}>
+        <MetricCard
+          label="Total SIs"
+          value={listQ.isLoading ? '–' : totals.total}
+          hint={shortDayYear(runDate)}
+          icon={<IconCalendar size={18} color={c.sTx} />}
+          iconTone="neutral"
+        />
+        <MetricCard
+          label="Awaiting your review"
+          value={listQ.isLoading ? '–' : totals.drafts}
+          hint={totals.total > 0 ? `${totals.drafts} of ${totals.total} today` : 'None yet'}
+          icon={<IconAlert size={18} color={c.yTx} />}
+          iconTone="draft"
+        />
+        <MetricCard
+          label="Locked & final"
+          value={listQ.isLoading ? '–' : totals.locked}
+          hint={totals.total > 0 ? `${totals.locked} of ${totals.total} today` : 'None yet'}
+          icon={<IconLock size={18} color={c.gTx} />}
+          iconTone="locked"
+        />
       </View>
 
       <SectionCard
@@ -114,31 +168,39 @@ export default function SiListScreen() {
               <FilterChip label={`Status: ${status === 'draft' ? 'Draft' : 'Locked'}`} onClear={() => setStatus('all')} />
             )}
             {storeIds.length > 0 && (
-              <FilterChip label={`Stores: ${storeIds.length} selected`} onClear={() => setStoreIds([])} />
+              <FilterChip
+                label={`${storeIds.length === 1 ? 'Store' : 'Stores'}: ${
+                  storeIds
+                    .map((id) => (storesQ.data ?? []).find((s) => s.id === id)?.name ?? id)
+                    .join(', ')
+                }`}
+                onClear={() => setStoreIds([])}
+              />
             )}
           </>
         }
         action={
           <Button
             label="Generate SIs"
-            leading={<Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>+</Text>}
+            leading={<IconPlus size={15} color="#fff" />}
+            tooltip="Create fresh draft SIs for one or more of your stores now, without waiting for the 9 pm run."
             onPress={() => router.push('/sis/generate')}
           />
         }
         contentPadding={false}
       >
         {listQ.isLoading ? (
-          <LoadingState label={`Loading SIs for ${shortDayYear(runDate)}…`} />
+          <SkeletonRows count={6} />
         ) : listQ.isError ? (
           <ErrorState
             title="Couldn't load SIs"
-            body="The request timed out reaching the indent service. Your session is still active — try again in a moment."
+            body="The request timed out reaching the indent service. Your session is still active. Try again in a moment."
             onRetry={() => listQ.refetch()}
           />
         ) : rows.length === 0 ? (
           <EmptyState
-            title={`No SIs for ${shortDayYear(runDate)}`}
-            body="Nothing has been generated for this date yet. Generate drafts for your assigned stores to get started."
+            title={`No indents for ${shortDayYear(runDate)}`}
+            body="The daily engine runs at 9 pm. Anything for tomorrow appears here overnight. You can also generate drafts manually for your assigned stores right now."
             cta={<Button label="Generate SIs" onPress={() => router.push('/sis/generate')} />}
           />
         ) : (
@@ -149,7 +211,7 @@ export default function SiListScreen() {
               padding: 14, borderTopWidth: 1, borderTopColor: c.border,
               backgroundColor: c.footerBg, flexDirection: 'row', gap: 8, alignItems: 'center',
             }}>
-              <Text style={{ color: c.yTx, fontSize: 15 }}>💡</Text>
+              <IconBulb size={15} color={c.yTx} />
               <Text style={{ color: c.mut, fontSize: font.small, fontFamily }}>{insight}</Text>
             </View>
           </>
@@ -160,16 +222,44 @@ export default function SiListScreen() {
       {confirmDelete && (
         <ConfirmDialog
           title={`Delete draft for ${confirmDelete.store.name}?`}
-          body={`This SI can be regenerated later, but any edits you've saved to line quantities will be lost.`}
+          body={`This SI can be regenerated later. Any edits you saved to line quantities will be lost.`}
           confirmLabel="Delete draft"
           onConfirm={async () => {
-            await deleteMut.mutateAsync(confirmDelete.id);
+            await deleteMut.mutateAsync(confirmDelete);
             setConfirmDelete(null);
           }}
           onCancel={() => setConfirmDelete(null)}
           loading={deleteMut.isPending}
         />
       )}
+
+      <HelpPopover
+        title="Suggestive Indents"
+        sections={[
+          {
+            heading: 'What this page shows',
+            body: 'All the day\'s indents for your stores. Drafts you can still edit are listed first. Locked indents are final and read-only.',
+          },
+          {
+            heading: 'Origin: Auto vs Manual',
+            body: 'Auto rows come from the nightly engine that runs at 9 pm. Manual rows are ones you or the ops team generated by hand.',
+          },
+          {
+            heading: 'Your daily flow',
+            numbered: true,
+            body: [
+              'Pick the date at the top (Today by default).',
+              'Open each Draft row.',
+              'Adjust line quantities and Save all.',
+              'Lock the SI when you\'re happy with it.',
+            ],
+          },
+          {
+            heading: 'Nothing showing?',
+            body: 'The engine runs overnight. If the list is empty, tap Generate SIs to create drafts for your stores right now.',
+          },
+        ]}
+      />
     </Screen>
   );
 }
@@ -186,11 +276,25 @@ function SiTable({
     textTransform: 'uppercase', letterSpacing: 0.6, fontFamily,
   };
   return (
-    <ScrollView horizontal>
+    // Horizontal ScrollView default-shrinks to its content width — so the
+    // inner rows never learn the card is wider than 760px. Force it to fill
+    // via `style: width 100%` and use `contentContainerStyle: minWidth` for
+    // the mobile-scroll floor.
+    <ScrollView
+      horizontal
+      style={{ width: '100%' }}
+      contentContainerStyle={{ minWidth: 760, width: '100%' }}
+    >
       <View style={{ minWidth: 760, width: '100%' }}>
-        {/* header */}
-        <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.card }}>
-          <Text style={[th, { width: 220 }]}>Store</Text>
+        {/* header — Store gets `flex: 1` so the row spans the SectionCard end-to-end
+            instead of stopping at the sum of the fixed column widths. Every other
+            column is fixed-width so numeric columns stay aligned across rows. */}
+        <View style={{
+          flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10,
+          borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.card,
+          ...stickyHeader(),
+        }}>
+          <Text style={[th, { flex: 1, minWidth: 220 }]}>Store</Text>
           <Text style={[th, { width: 90 }]}>Run date</Text>
           <Text style={[th, { width: 90 }]}>Origin</Text>
           <Text style={[th, { width: 120 }]}>Trigger</Text>
@@ -201,61 +305,7 @@ function SiTable({
         </View>
 
         {rows.map((r) => (
-          <Pressable
-            key={r.id}
-            onPress={() => onOpen(r.id)}
-            style={({ hovered }) => ({
-              flexDirection: 'row',
-              paddingHorizontal: 16, paddingVertical: 11,
-              borderBottomWidth: 1, borderBottomColor: c.border,
-              backgroundColor: (hovered as boolean) ? c.accent : c.card,
-              alignItems: 'center',
-            })}
-          >
-            {/* Store */}
-            <View style={{ width: 220 }}>
-              <Text style={{ color: c.fg, fontWeight: weight.semibold as TextStyle['fontWeight'], fontSize: font.body, fontFamily }} numberOfLines={1}>
-                {r.store.name}
-              </Text>
-              <Text style={{ color: c.mut, fontSize: font.caption, marginTop: 1, fontFamily }} numberOfLines={1}>
-                {r.store.code} · {r.store.warehouse}
-              </Text>
-            </View>
-            <Text style={{ width: 90, color: c.fg, fontSize: font.body, fontFamily }}>{fmtDate(r.runDate)}</Text>
-            <View style={{ width: 90 }}><MetaChip label={r.origin === 'manual' ? 'Manual' : 'Auto'} /></View>
-            <Text style={{ width: 120, color: c.mut, fontSize: font.body, fontFamily }}>{fmtTrigger(r.trigger)}</Text>
-            <View style={{ width: 100 }}>
-              <StatusChip tone={r.status === 'locked' ? 'locked' : 'draft'} />
-            </View>
-            <View style={{ width: 110 }}>
-              <Text style={{
-                fontWeight: weight.semibold as TextStyle['fontWeight'],
-                fontSize: font.body,
-                color: r.exceptionCount > 0 ? c.rTx : c.sTx,
-                fontFamily, fontVariant: ['tabular-nums'],
-              }}>
-                {r.exceptionCount > 0 ? `${r.exceptionCount} ${r.exceptionCount === 1 ? 'issue' : 'issues'}` : '—'}
-              </Text>
-            </View>
-            <Text style={{ width: 90, textAlign: 'right', color: c.fg, fontSize: font.body, fontFamily, fontVariant: ['tabular-nums'] }}>
-              {r.leadTimeDays} {r.leadTimeDays === 1 ? 'day' : 'days'}
-            </Text>
-            <View style={{ width: 60, alignItems: 'flex-end' }}>
-              {r.status === 'draft' && (
-                <Pressable
-                  onPress={(e) => { e.stopPropagation?.(); onDelete(r); }}
-                  accessibilityLabel="Delete draft SI"
-                  style={{
-                    width: 30, height: 30, borderRadius: radius.sm,
-                    borderWidth: 1, borderColor: c.border,
-                    alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
-                  <Text style={{ color: c.mut, fontSize: 14 }}>🗑</Text>
-                </Pressable>
-              )}
-            </View>
-          </Pressable>
+          <SiRow key={r.id} row={r} onOpen={onOpen} onDelete={onDelete} />
         ))}
       </View>
     </ScrollView>
@@ -265,9 +315,10 @@ function SiTable({
 function RunDatePill({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { c } = useTheme();
   const [open, setOpen] = useState(false);
-  const presets = [-2, -1, 0, 1].map((n) => ({ iso: todayIso(n), label: n === 0 ? 'Today' : n === -1 ? 'Yesterday' : shortDayYear(todayIso(n)) }));
+  const wrapperRef = useRef<any>(null);
+  useOutsideClick(wrapperRef, open, () => setOpen(false));
   return (
-    <View style={{ position: 'relative' }}>
+    <View ref={wrapperRef} style={{ position: 'relative', zIndex: open ? 40 : 1 }}>
       <Pressable
         onPress={() => setOpen((v) => !v)}
         style={{
@@ -275,72 +326,200 @@ function RunDatePill({ value, onChange }: { value: string; onChange: (v: string)
           borderWidth: 1, borderColor: c.border, backgroundColor: c.card,
           borderRadius: radius.md, paddingVertical: 7, paddingHorizontal: 12,
         }}
+        accessibilityLabel={`Run date, ${shortDayYear(value)}`}
       >
-        <Text style={{ color: c.mut, fontSize: 14 }}>📅</Text>
+        <IconCalendar size={14} color={c.mut} />
         <Text style={{ color: c.fg, fontSize: font.body, fontWeight: weight.medium as TextStyle['fontWeight'], fontFamily }}>
           {shortDayYear(value)}
         </Text>
+        {open ? <IconChevronUp size={12} color={c.mut} /> : <IconChevronDown size={12} color={c.mut} />}
       </Pressable>
       {open && (
-        <View style={{
-          position: 'absolute', top: '110%' as unknown as number, left: 0,
-          minWidth: 220, backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
-          borderRadius: radius.md, padding: 6, gap: 2, zIndex: 100,
-        }}>
-          {presets.map((p) => (
-            <Pressable
-              key={p.iso}
-              onPress={() => { onChange(p.iso); setOpen(false); }}
-              style={({ hovered }) => ({
-                paddingVertical: 7, paddingHorizontal: 10, borderRadius: radius.sm,
-                backgroundColor: (hovered as boolean) ? c.accent : 'transparent',
-              })}
-            >
-              <Text style={{ color: c.fg, fontSize: font.body, fontFamily }}>{p.label}</Text>
-              <Text style={{ color: c.mut, fontSize: font.caption, fontFamily }}>{p.iso}</Text>
-            </Pressable>
-          ))}
+        <View
+          style={{
+            position: 'absolute',
+            top: 40,                 // trigger height (34px) + 6px gap
+            left: 0,
+            backgroundColor: c.card,
+            borderWidth: 1, borderColor: c.border,
+            borderRadius: radius.md,
+            zIndex: 100, elevation: 8,
+            shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 8 },
+          }}
+        >
+          <Calendar
+            value={value}
+            onChange={(iso) => { onChange(iso); setOpen(false); }}
+          />
         </View>
       )}
     </View>
   );
 }
 
-function ConfirmDialog({
-  title, body, confirmLabel, onConfirm, onCancel, loading, tone = 'danger',
-}: {
-  title: string; body: string; confirmLabel: string;
-  onConfirm: () => void; onCancel: () => void; loading?: boolean; tone?: 'danger' | 'primary';
-}) {
+// ConfirmDialog moved to src/components/ConfirmDialog.tsx so components
+// outside this route can consume it without a circular import. Re-exported
+// from here for existing call sites that already imported from './index'.
+export { ConfirmDialog } from '../../../src/components/ConfirmDialog';
+
+// ─── SiRow — one table row with hover-driven chevron affordance ───────────
+function SiRow({
+  row, onOpen, onDelete,
+}: { row: SiSummary; onOpen: (id: string) => void; onDelete: (r: SiSummary) => void }) {
   const { c } = useTheme();
+  // Freshness — rows created in the last 90 seconds get a subtle tint + a
+  // "Just now" pill so the user can spot "which one did I just make?"
+  // right after landing on the list from Generate. Computed at render;
+  // natural re-renders (hover, filter change, refetch) update it.
+  const ageMs = Date.now() - new Date(row.createdAt).getTime();
+  const isFresh = ageMs < 90_000 && ageMs >= 0;
+  const isManual = row.origin === 'manual';
   return (
-    <View style={{
-      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-      padding: 24,
-    }}>
-      <View style={{
-        width: '100%', maxWidth: 420,
-        backgroundColor: c.card, borderWidth: 1, borderColor: c.border,
-        borderRadius: radius.lg, padding: 20,
-      }}>
-        <Body size="h3" wt="semibold">{title}</Body>
-        <Body mut style={{ marginTop: 8 }}>{body}</Body>
-        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 20 }}>
-          <Button label="Cancel" variant="secondary" onPress={onCancel} />
-          <Button
-            label={loading ? 'Working…' : confirmLabel}
-            variant={tone === 'danger' ? 'danger' : 'primary'}
-            onPress={onConfirm}
-            loading={loading}
-          />
-        </View>
-      </View>
-    </View>
+    <Pressable
+      onPress={() => onOpen(row.id)}
+      style={({ hovered }) => ({
+        flexDirection: 'row',
+        paddingHorizontal: 16, paddingVertical: 11,
+        borderBottomWidth: 1, borderBottomColor: c.border,
+        // Fresh rows tint YELLOW (Draft-family colour) so the eye lands on
+        // them first. Hover on top of that stays subtle — accent overlay
+        // reads through the tint without clashing.
+        backgroundColor: isFresh ? c.yBg : (hovered as boolean) ? c.accent : c.card,
+        alignItems: 'center',
+      })}
+    >
+      {({ hovered }) => (
+        <>
+          {/* Store — flex:1 so the row spans end-to-end. Store name stays in
+              foreground colour on hover (turning it red clashed with the
+              nearby "N issues" red text and read as an error). The row bg
+              lift + hover chevron on the right already convey "clickable". */}
+          <View style={{ flex: 1, minWidth: 220 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text
+                style={{
+                  color: c.fg,
+                  fontWeight: weight.semibold as TextStyle['fontWeight'],
+                  fontSize: font.body, fontFamily,
+                }}
+                numberOfLines={1}
+              >
+                {row.store.name}
+              </Text>
+              {isFresh && (
+                <View style={{
+                  backgroundColor: c.yBg, borderRadius: radius.pill,
+                  paddingHorizontal: 8, paddingVertical: 2,
+                  borderWidth: 1, borderColor: c.yTx,
+                }}>
+                  <Text style={{ color: c.yTx, fontSize: font.caption, fontWeight: weight.semibold as TextStyle['fontWeight'], fontFamily }}>
+                    Just now
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ color: c.mut, fontSize: font.caption, marginTop: 1, fontFamily }} numberOfLines={1}>
+              {row.store.code} · {row.store.warehouse}
+            </Text>
+          </View>
+          <Text style={{ width: 90, color: c.fg, fontSize: font.body, fontFamily }}>{fmtDate(row.runDate)}</Text>
+          {/* Origin — icon + colour differentiated so Manual/Auto reads at a
+              glance (GitHub Actions pattern). Manual = person icon in brand
+              red (a human made this); Auto = clock icon in slate (cron). */}
+          <View style={{ width: 90 }}>
+            <View style={{
+              alignSelf: 'flex-start',
+              backgroundColor: isManual ? c.navActiveBg : c.sBg,
+              borderRadius: radius.pill,
+              paddingVertical: 3, paddingHorizontal: 8,
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+            }}>
+              {isManual
+                ? <IconUser size={12} color={c.red} />
+                : <IconClock size={12} color={c.sTx} />}
+              <Text style={{
+                color: isManual ? c.red : c.sTx,
+                fontSize: font.caption,
+                fontWeight: weight.semibold as TextStyle['fontWeight'],
+                fontFamily,
+              }}>
+                {isManual ? 'Manual' : 'Auto'}
+              </Text>
+            </View>
+          </View>
+          <Text style={{ width: 120, color: c.mut, fontSize: font.body, fontFamily }}>{fmtTrigger(row.trigger)}</Text>
+          <View style={{ width: 100 }}>
+            <StatusChip tone={row.status === 'locked' ? 'locked' : 'draft'} />
+          </View>
+          <View style={{ width: 110 }}>
+            <Text style={{
+              fontWeight: weight.semibold as TextStyle['fontWeight'],
+              fontSize: font.body,
+              color: row.exceptionCount > 0 ? c.rTx : c.sTx,
+              fontFamily, fontVariant: ['tabular-nums'],
+            }}>
+              {row.exceptionCount > 0 ? `${row.exceptionCount} ${row.exceptionCount === 1 ? 'issue' : 'issues'}` : '–'}
+            </Text>
+          </View>
+          <Text style={{ width: 90, textAlign: 'right', color: c.fg, fontSize: font.body, fontFamily, fontVariant: ['tabular-nums'] }}>
+            {row.leadTimeDays} {row.leadTimeDays === 1 ? 'day' : 'days'}
+          </Text>
+          <View style={{ width: 60, alignItems: 'flex-end', flexDirection: 'row', justifyContent: 'flex-end', gap: 4 }}>
+            {row.status === 'draft' && (
+              <Pressable
+                onPress={(e) => { e.stopPropagation?.(); onDelete(row); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete draft SI for ${row.store.name}`}
+                style={({ hovered: hoverBtn }) => ({
+                  width: 30, height: 30, borderRadius: radius.sm,
+                  borderWidth: 1,
+                  borderColor: (hoverBtn as boolean) ? c.chipRedBorder : c.border,
+                  alignItems: 'center', justifyContent: 'center',
+                })}
+              >
+                <IconTrash size={14} color={c.mut} />
+              </Pressable>
+            )}
+          </View>
+        </>
+      )}
+    </Pressable>
   );
 }
 
-export { ConfirmDialog };
+// ─── SkeletonRows — pulse-placeholder rows shown while the list loads.
+// Matches the real row shape so users perceive the layout before data lands
+// (Vercel-style perceived-speed win vs a lone spinner). ────────────────
+function SkeletonRows({ count = 6 }: { count?: number }) {
+  const { c } = useTheme();
+  const rowStyle = {
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: c.border,
+    backgroundColor: c.card,
+    gap: 12,
+  };
+  const bar = (w: number, h = 12) => ({ width: w, height: h, borderRadius: 4, backgroundColor: c.muted, opacity: 0.6 });
+  return (
+    <View>
+      {Array.from({ length: count }).map((_, i) => (
+        <View key={i} style={rowStyle}>
+          <View style={{ flex: 1, minWidth: 220, gap: 6 }}>
+            <View style={bar(160)} />
+            <View style={bar(110, 9)} />
+          </View>
+          <View style={{ width: 90 }}><View style={bar(50)} /></View>
+          <View style={{ width: 90 }}><View style={bar(58, 18)} /></View>
+          <View style={{ width: 120 }}><View style={bar(80)} /></View>
+          <View style={{ width: 100 }}><View style={bar(58, 18)} /></View>
+          <View style={{ width: 110 }}><View style={bar(60)} /></View>
+          <View style={{ width: 90 }}><View style={bar(46)} /></View>
+          <View style={{ width: 60 }} />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function fmtDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
@@ -348,5 +527,9 @@ function fmtDate(iso: string): string {
   return `${d.getDate()} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]}`;
 }
 function fmtTrigger(t: string): string {
-  return t.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  // Match the design's casing verbatim — Sentence case only on the first
+  // word ("Catch-up", "Daily cron", "Admin backfill"), not Title Case per
+  // word. Design HTML uses lowercase after the first letter.
+  const spaced = t.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

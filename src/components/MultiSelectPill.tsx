@@ -4,10 +4,12 @@
 // - Any non-empty subset renders every selected label, never "N selected"
 // - Select all / Clear as the first row inside the popover
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { View, Pressable, Text, TextInput, ScrollView, type ViewStyle, type TextStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { font, radius, weight, fontFamily } from '../theme/tokens';
+import { useOutsideClick } from '../hooks/useOutsideClick';
+import { IconChevronDown, IconChevronUp } from './icons';
 
 export interface MultiOption {
   value: string;
@@ -32,6 +34,8 @@ export function MultiSelectPill({
   const { c } = useTheme();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
+  const wrapperRef = useRef<any>(null);
+  useOutsideClick(wrapperRef, open, () => setOpen(false));
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return options;
@@ -49,7 +53,7 @@ export function MultiSelectPill({
                           : selectedLabels.join(', ');
 
   return (
-    <View style={{ position: 'relative' }}>
+    <View ref={wrapperRef} style={{ position: 'relative', zIndex: open ? 40 : 1 }}>
       <Pressable
         onPress={() => setOpen((v) => !v)}
         style={{
@@ -68,19 +72,21 @@ export function MultiSelectPill({
           numberOfLines={1}
           style={{ color: c.fg, fontSize: font.body, fontWeight: weight.medium as TextStyle['fontWeight'], fontFamily, flex: 1 }}
         >{triggerLabel}</Text>
-        <Text style={{ color: c.mut, fontSize: font.small }}>{open ? '▲' : '▼'}</Text>
+        {open ? <IconChevronUp size={12} color={c.mut} /> : <IconChevronDown size={12} color={c.mut} />}
       </Pressable>
 
       {open && (
         <View style={{
-          position: 'absolute', top: '110%' as unknown as number, left: 0,
+          position: 'absolute',
+          top: 40,                    // trigger height + 6 gap — same as RunDatePill
+          left: 0,
           minWidth: 260, maxWidth: 400,
           backgroundColor: c.card,
           borderWidth: 1, borderColor: c.border,
           borderRadius: radius.md,
           padding: 8,
-          zIndex: 100,
-          shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 },
+          zIndex: 100, elevation: 8,
+          shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 8 },
         }}>
           {searchable && (
             <TextInput

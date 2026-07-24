@@ -11,6 +11,7 @@ import type {
   ListSiFilter, GenerateSiRequest, GenerateSiResult,
   SaveLinesRequest, AuthLoginRequest, AuthLoginResponse, ApiError,
 } from './types';
+import { MOCK_ENABLED, mockApi } from './mock';
 
 const BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '') ||
@@ -60,43 +61,31 @@ function qs(filter: ListSiFilter): string {
   return s ? `?${s}` : '';
 }
 
-export const api = {
-  // ── Auth ───────────────────────────────────────────────────────────────
+// Every endpoint below routes through the mock when MOCK_ENABLED is true,
+// otherwise hits the real Nest backend. The mock is a full in-memory server
+// (see ./mock.ts) — Save all, Lock, Delete, Generate all persist for the
+// session, so every screen can be exercised end-to-end without a running API.
+const realApi = {
   login: (body: AuthLoginRequest) =>
     req<AuthLoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
-
-  // ── SI list ────────────────────────────────────────────────────────────
   listSis: (filter: ListSiFilter) =>
     req<SiSummary[]>(`/sis${qs(filter)}`, { method: 'GET' }),
-
-  // ── SI detail ──────────────────────────────────────────────────────────
   getSi: (id: string) =>
     req<SiDetail>(`/sis/${encodeURIComponent(id)}`, { method: 'GET' }),
-
   saveLines: (id: string, body: SaveLinesRequest) =>
     req<SiDetail>(`/sis/${encodeURIComponent(id)}/lines`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
+      method: 'PATCH', body: JSON.stringify(body),
     }),
-
   lockSi: (id: string) =>
     req<SiDetail>(`/sis/${encodeURIComponent(id)}/lock`, { method: 'POST' }),
-
   deleteSi: (id: string) =>
     req<{ ok: true }>(`/sis/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-  // ── Generate ───────────────────────────────────────────────────────────
   generate: (body: GenerateSiRequest) =>
     req<GenerateSiResult>('/sis/generate', { method: 'POST', body: JSON.stringify(body) }),
-
-  // ── Stores (scoped to signed-in user) ──────────────────────────────────
   listStores: () =>
     req<{ id: string; code: string; name: string; warehouse: string }[]>(
-      '/stores',
-      { method: 'GET' },
+      '/stores', { method: 'GET' },
     ),
-
-  // ── Exceptions ─────────────────────────────────────────────────────────
   listExceptions: (params: { runDate?: string; types?: string[] } = {}) => {
     const p = new URLSearchParams();
     if (params.runDate) p.set('runDate', params.runDate);
@@ -104,8 +93,6 @@ export const api = {
     const s = p.toString();
     return req<SiException[]>(`/exceptions${s ? `?${s}` : ''}`, { method: 'GET' });
   },
-
-  // ── Discrepancies ──────────────────────────────────────────────────────
   listDiscrepancies: (params: { runDate?: string; storeIds?: string[]; types?: string[] } = {}) => {
     const p = new URLSearchParams();
     if (params.runDate) p.set('runDate', params.runDate);
@@ -115,5 +102,7 @@ export const api = {
     return req<Discrepancy[]>(`/discrepancies${s ? `?${s}` : ''}`, { method: 'GET' });
   },
 };
+
+export const api = MOCK_ENABLED ? mockApi : realApi;
 
 export type Api = typeof api;

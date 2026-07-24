@@ -8,10 +8,28 @@
 import { type ReactNode } from 'react';
 import {
   View, Text, Pressable, ActivityIndicator, TextInput, ScrollView,
+  useWindowDimensions,
   type ViewStyle, type TextStyle, type StyleProp,
 } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { font, radius, space, weight, fontFamily } from '../theme/tokens';
+import { IconFileEmpty, IconAlert } from './icons';
+import { Tooltip } from './Tooltip';
+
+// Responsive breakpoints — the app targets desktop first (this is a franchise
+// ops tool, not a phone-native product), but every screen must remain usable
+// on a phone browser so store managers can spot-check from the floor.
+//   phone: <640    (single column, tight paddings, table scrolls horizontally)
+//   tablet: 640-1024 (two-up cards, wrap where useful)
+//   desktop: 1024+ (full 3-up layouts, generous paddings)
+export function useBreakpoint() {
+  const { width } = useWindowDimensions();
+  return {
+    width,
+    isPhone: width < 640,
+    isTabletOrBelow: width < 1024,
+  };
+}
 
 // ─── Primitives ─────────────────────────────────────────────────────────────
 
@@ -66,6 +84,7 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 export function Button({
   label, onPress, variant = 'primary', leading, disabled, loading, fullWidth,
+  emphasis, tooltip, accessibilityLabel,
 }: {
   label: string;
   onPress?: () => void;
@@ -74,6 +93,14 @@ export function Button({
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
+  /** `high` = ring + slightly larger padding to draw the eye. Used on
+   *  Save all when there are unsaved edits — the button changes SHAPE, not
+   *  colour, so it reads as "important right now" without new hues. */
+  emphasis?: 'normal' | 'high';
+  /** Hover-tooltip copy explaining what the button does. Especially useful
+   *  on destructive / impactful CTAs like Lock, Delete draft, Save all. */
+  tooltip?: string;
+  accessibilityLabel?: string;
 }) {
   const { c } = useTheme();
   const bg =
@@ -90,9 +117,16 @@ export function Button({
     variant === 'primary' ? '#ffffff' :
     variant === 'danger'  ? c.rTx :
                             c.fg;
-  return (
+  // `emphasis=high` = subtle outer ring + a hair more vertical padding. Draws
+  // the eye without adding a new colour. Used when the button represents a
+  // pending action (unsaved edits → Save all).
+  const highRing = emphasis === 'high' && !disabled;
+  const btn = (
     <Pressable
       onPress={disabled || loading ? undefined : onPress}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       style={({ hovered, pressed }) => ([
         {
           backgroundColor: bg,
@@ -100,7 +134,7 @@ export function Button({
           borderWidth: 1,
           borderRadius: radius.md,
           paddingHorizontal: 14,
-          paddingVertical: 9,
+          paddingVertical: emphasis === 'high' ? 10 : 9,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
@@ -108,6 +142,16 @@ export function Button({
           opacity: disabled ? 0.55 : 1,
           alignSelf: fullWidth ? 'stretch' : 'flex-start',
         } as ViewStyle,
+        highRing ? {
+          // 2-px outer ring — implemented as an extra shadow-like outline via
+          // a light-red halo (rgba of c.redSolid). Reads as "attention" not
+          // "error" because it's outside the button, not filling it.
+          shadowColor: c.redSolid,
+          shadowOpacity: 0.28,
+          shadowRadius: 0,
+          shadowOffset: { width: 0, height: 0 },
+          // RN Web: elevation is ignored, shadow* is the actual effect.
+        } as ViewStyle : null,
         (hovered as boolean) && !disabled ? { opacity: 0.9 } : null,
         (pressed as boolean) && !disabled ? { transform: [{ scale: 0.98 }] } : null,
       ])}
@@ -123,6 +167,8 @@ export function Button({
       }}>{label}</Text>
     </Pressable>
   );
+  if (!tooltip) return btn;
+  return <Tooltip label={tooltip}>{btn}</Tooltip>;
 }
 
 // ─── Chip / StatusChip ─────────────────────────────────────────────────────
@@ -135,7 +181,7 @@ export function StatusChip({ tone, label }: { tone: StatusTone; label?: string }
     tone === 'draft'  ? { tx: c.yTx, bg: c.yBg, dot: c.yDot, dflt: 'Draft' } :
     tone === 'locked' ? { tx: c.gTx, bg: c.gBg, dot: c.gDot, dflt: 'Locked' } :
     tone === 'error'  ? { tx: c.rTx, bg: c.rBg, dot: c.rDot, dflt: 'Error' } :
-                        { tx: c.sTx, bg: c.sBg, dot: c.mut,  dflt: '—' };
+                        { tx: c.sTx, bg: c.sBg, dot: c.mut,  dflt: '–' };
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: 5,
@@ -229,10 +275,21 @@ export function SectionCard({
   contentPadding?: boolean;
 }) {
   const { c } = useTheme();
+  const { isPhone } = useBreakpoint();
+  // Header row: on phones, `flexWrap: 'wrap'` drops the action below the
+  // title+subtitle stack. The action View also grows to `alignSelf: stretch`
+  // via minWidth so full-width CTAs (Generate SIs) don't sit awkwardly narrow.
   return (
     <Card style={style}>
-      <View style={{ padding: 18, paddingBottom: 14, flexDirection: 'row', gap: 16, justifyContent: 'space-between' }}>
-        <View style={{ flex: 1 }}>
+      <View style={{
+        padding: isPhone ? 14 : 18,
+        paddingBottom: 14,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+        justifyContent: 'space-between',
+      }}>
+        <View style={{ flex: 1, minWidth: 200 }}>
           <Body size="h3" wt="semibold">{title}</Body>
           {subtitle && <Body size="body" mut style={{ marginTop: 4 }}>{subtitle}</Body>}
         </View>
@@ -254,29 +311,61 @@ export function SectionCard({
 // ─── MetricCard ────────────────────────────────────────────────────────────
 
 export function MetricCard({
-  label, value, valueSuffix, style, tone,
+  label, value, hint, icon, iconTone, style,
 }: {
   label: string;
   value: string | number;
-  valueSuffix?: ReactNode;
+  /** Short one-line supplementary context — e.g. "63% of today" or a date.
+   *  Sits directly below the hero number. Prefer a ratio/date over a
+   *  redundant status chip (a "Drafts awaiting review" card doesn't need a
+   *  "Draft" chip next to its number). */
+  hint?: string;
+  /** Optional lucide-style icon rendered as a tinted square in the top-left
+   *  corner of the card. Gives each metric a distinct visual identity without
+   *  the noise of an inline chip. */
+  icon?: ReactNode;
+  /** Colour family for the icon tile. Defaults to slate (neutral). */
+  iconTone?: 'neutral' | 'draft' | 'locked' | 'red';
   style?: StyleProp<ViewStyle>;
-  tone?: StatusTone;
 }) {
   const { c } = useTheme();
+  const iconBg =
+    iconTone === 'draft'  ? c.yBg :
+    iconTone === 'locked' ? c.gBg :
+    iconTone === 'red'    ? c.rBg :
+                            c.sBg;
+  // Each card grows to fill its share (`flexGrow`) but claims a healthy
+  // minimum (`minWidth: 200`) so the parent row wraps into two-up or one-up
+  // on narrow viewports instead of crushing three cards below the point
+  // where their labels or numbers fit.
   return (
     <View style={[{
-      flex: 1, minWidth: 0,
+      flexGrow: 1, flexBasis: 200, minWidth: 200,
       borderWidth: 1, borderColor: c.border, borderRadius: radius.lg,
       backgroundColor: c.card, padding: 16,
+      flexDirection: 'row', alignItems: 'flex-start', gap: 12,
     }, style]}>
-      <MicroLabel>{label}</MicroLabel>
-      <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      {icon && (
+        <View style={{
+          width: 36, height: 36, borderRadius: radius.md,
+          backgroundColor: iconBg,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          {icon}
+        </View>
+      )}
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <MicroLabel>{label}</MicroLabel>
         <Text style={{
           color: c.fg, fontSize: font.h1, fontWeight: weight.bold as TextStyle['fontWeight'],
           fontFamily, fontVariant: ['tabular-nums'],
+          marginTop: 4,
         }}>{value}</Text>
-        {tone && <StatusChip tone={tone} />}
-        {valueSuffix}
+        {hint && (
+          <Text style={{ color: c.mut, fontSize: font.caption, fontFamily, marginTop: 2 }}>
+            {hint}
+          </Text>
+        )}
       </View>
     </View>
   );
@@ -369,17 +458,29 @@ export function Banner({
 
 export function Screen({ children }: { children: ReactNode }) {
   const { c } = useTheme();
+  const { isPhone } = useBreakpoint();
+  // Padding tightens on phones so cards get the full viewport width instead
+  // of losing 64 px to gutters on a 375 px screen. Vertical rhythm shrinks
+  // too — chunky 48px paddings look luxurious on desktop but wasteful on
+  // a small viewport where the user needs to scan quickly.
   return (
-    <ScrollView style={{ backgroundColor: c.bg, flex: 1 }} contentContainerStyle={{
-      maxWidth: 1400,
-      width: '100%',
-      alignSelf: 'center',
-      paddingHorizontal: 32,
-      paddingTop: 24,
-      paddingBottom: 48,
-      gap: space.xxl,
-    }}>
-      {children}
+    <ScrollView
+      style={{ backgroundColor: c.bg, flex: 1 }}
+      contentContainerStyle={{ minHeight: '100%' }}
+    >
+      <View
+        style={{
+          width: '100%',
+          maxWidth: 1400,
+          marginHorizontal: 'auto',
+          paddingHorizontal: isPhone ? 16 : 32,
+          paddingTop: isPhone ? 16 : 24,
+          paddingBottom: isPhone ? 32 : 48,
+          gap: isPhone ? space.xl : space.xxl,
+        }}
+      >
+        {children}
+      </View>
     </ScrollView>
   );
 }
@@ -387,12 +488,21 @@ export function Screen({ children }: { children: ReactNode }) {
 // ─── PageHeader ─────────────────────────────────────────────────────────────
 
 export function PageHeader({
-  title, subtitle, action,
-}: { title: string; subtitle?: string; action?: ReactNode }) {
+  title, subtitle, action, titleBadge,
+}: { title: string; subtitle?: string; action?: ReactNode; titleBadge?: ReactNode }) {
+  // flexWrap on the outer row + minWidth on the title cell so a wide action
+  // cluster (SI Detail has 5 CTAs) drops beneath the title instead of
+  // squeezing "Connaught Place" into a character-per-line vertical column.
+  // `titleBadge` renders inline alongside the title — used for a status chip
+  // (Draft/Locked) so the reader sees the state at a glance without adding
+  // another card to the meta strip below.
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-      <View style={{ flex: 1 }}>
-        <Body size="h1" wt="bold">{title}</Body>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+      <View style={{ flex: 1, minWidth: 240 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Body size="h1" wt="bold">{title}</Body>
+          {titleBadge}
+        </View>
         {subtitle && <Body mut style={{ marginTop: 6 }}>{subtitle}</Body>}
       </View>
       {action}
@@ -422,7 +532,7 @@ export function EmptyState({
         width: 52, height: 52, borderRadius: 14, backgroundColor: c.muted,
         alignItems: 'center', justifyContent: 'center', marginBottom: 8,
       }}>
-        <Text style={{ color: c.mut, fontSize: 22 }}>◻︎</Text>
+        <IconFileEmpty size={22} color={c.mut} />
       </View>
       <Body wt="semibold" size="h4">{title}</Body>
       {body && <Body mut style={{ textAlign: 'center', maxWidth: 360 }}>{body}</Body>}
@@ -441,7 +551,7 @@ export function ErrorState({
         width: 52, height: 52, borderRadius: 14, backgroundColor: c.rBg,
         alignItems: 'center', justifyContent: 'center', marginBottom: 8,
       }}>
-        <Text style={{ color: c.rTx, fontSize: 24, fontWeight: 'bold' }}>!</Text>
+        <IconAlert size={22} color={c.rTx} />
       </View>
       <Body wt="semibold" size="h4">{title}</Body>
       {body && <Body mut style={{ textAlign: 'center', maxWidth: 380 }}>{body}</Body>}

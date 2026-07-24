@@ -4,13 +4,16 @@
 // inside the same SectionCard so filters stay visible.
 
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, type TextStyle } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, type TextStyle, type ViewStyle } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeContext';
 import { api } from '../../src/api/client';
 import type { ExceptionType, SiException } from '../../src/api/types';
 import { Body, Button, EmptyState, ErrorState, FilterChip, LoadingState, PageHeader, Screen, SectionCard } from '../../src/components/ui';
+import { BackLink } from '../../src/components/BackLink';
+import { HelpPopover } from '../../src/components/HelpPopover';
+import { IconDownload } from '../../src/components/icons';
 import { font, radius, weight, fontFamily } from '../../src/theme/tokens';
 import { shortDayYear, todayIso } from '../../src/utils/format';
 import { ExceptionTypeChip } from './sis/[id]';
@@ -38,6 +41,7 @@ export default function ExceptionsScreen() {
 
   return (
     <Screen>
+      <BackLink />
       <PageHeader
         title="Exceptions"
         subtitle="Data issues the engine couldn't resolve. Fix upstream, then re-generate."
@@ -45,6 +49,12 @@ export default function ExceptionsScreen() {
           <Button
             label="Export CSV"
             variant="secondary"
+            leading={<IconDownload size={16} color={c.fg} />}
+            tooltip={
+              rows.length === 0
+                ? 'Nothing to export yet.'
+                : `Download all ${rows.length} exception${rows.length === 1 ? '' : 's'} shown as a CSV.`
+            }
             onPress={() => downloadCsv(`Exceptions_${runDate}.csv`, buildCsv<SiException>([
               { header: 'Type', get: (e) => e.type },
               { header: 'Store', get: (e) => e.storeName },
@@ -102,7 +112,7 @@ export default function ExceptionsScreen() {
         {q.isLoading ? (
           <LoadingState label="Loading exceptions…" />
         ) : q.isError ? (
-          <ErrorState onRetry={() => q.refetch()} body="Couldn't reach the indent service — try again in a moment." />
+          <ErrorState onRetry={() => q.refetch()} body="Couldn't reach the indent service. Try again in a moment." />
         ) : rows.length === 0 ? (
           <EmptyState
             title="No exceptions in scope"
@@ -112,6 +122,36 @@ export default function ExceptionsScreen() {
           <ExceptionsTable rows={rows} onOpen={(siId) => router.push(`/sis/${siId}` as never)} />
         )}
       </SectionCard>
+
+      <HelpPopover
+        title="Exceptions"
+        sections={[
+          {
+            heading: 'What this page shows',
+            body: 'Every SKU on today\'s SIs that the engine could not fully compute. Each row names the store, the SKU, and the reason.',
+          },
+          {
+            heading: 'What each type means',
+            body: [
+              'NEEDS_ADC: no recent sales data for this SKU, so the engine has nothing to project from.',
+              'ADC_ZERO: ADC came out to zero, usually because the SKU is not selling.',
+              'UNMAPPED: this SKU has no product-master entry, so the engine cannot look up its case size.',
+              'FREEZER_OVERCAP: the suggested quantity is bigger than the store\'s freezer allocation for this SKU.',
+              'MISSING_CONVERSION: the SKU exists but has no unit-to-case conversion factor.',
+            ],
+          },
+          {
+            heading: 'What to do',
+            numbered: true,
+            body: [
+              'Filter by type to focus on one issue at a time.',
+              'Tap a row to jump into the owning SI and see the full context.',
+              'Fix the underlying data (product master, ADC feed, freezer caps) offline.',
+              'Regenerate the SI. The exception should be gone.',
+            ],
+          },
+        ]}
+      />
     </Screen>
   );
 }
@@ -129,6 +169,7 @@ function ExceptionsTable({ rows, onOpen }: { rows: SiException[]; onOpen: (siId:
         <View style={{
           flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10,
           borderBottomWidth: 1, borderBottomColor: c.border, backgroundColor: c.card,
+          ...(Platform.OS === 'web' ? { position: 'sticky' as ViewStyle['position'], top: 0, zIndex: 2 } : null),
         }}>
           <Text style={[th, { width: 180 }]}>Type</Text>
           <Text style={[th, { width: 200 }]}>Store</Text>

@@ -70,14 +70,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const res = await api.login({ email, password });
+  const signIn = useCallback(async (email: string, _password: string) => {
+    // ── DEV bypass ────────────────────────────────────────────────────────
+    // Backend isn't wired up yet — until it is, clicking "Sign in" always
+    // succeeds with a mock owner. Any email typed in the field is echoed
+    // back so the header pill shows something meaningful; empty inputs
+    // fall back to a demo user. Swap this whole block back to
+    // `await api.login(...)` the day the Nest server is running.
+    const fakeToken = 'dev-bypass-token';
+    const fakeUser = {
+      id: 'dev-user-001',
+      email: email.trim() || 'demo@burgersinghonline.com',
+      name: email.trim() ? email.trim().split('@')[0] : 'Demo Owner',
+      role: 'store' as const,
+      storeIds: ['s-cp', 's-ind', 's-kor', 's-cyb', 's-pow', 's-hsr', 's-noi', 's-and'],
+    };
     await Promise.all([
-      storage.set(KEY_TOKEN, res.token),
-      storage.set(KEY_USER, JSON.stringify(res.user)),
+      storage.set(KEY_TOKEN, fakeToken),
+      storage.set(KEY_USER, JSON.stringify(fakeUser)),
     ]);
-    setToken(res.token);
-    setUser(res.user);
+    setToken(fakeToken);
+    setUser(fakeUser);
   }, []);
 
   const signOut = useCallback(async () => {

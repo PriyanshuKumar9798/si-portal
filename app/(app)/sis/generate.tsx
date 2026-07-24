@@ -12,8 +12,12 @@ import { useTheme } from '../../../src/theme/ThemeContext';
 import { api } from '../../../src/api/client';
 import type { GenerateSiResult } from '../../../src/api/types';
 import { Body, Button, Field, MicroLabel, PageHeader, Screen, SectionCard, Banner } from '../../../src/components/ui';
+import { BackLink } from '../../../src/components/BackLink';
+import { HelpPopover } from '../../../src/components/HelpPopover';
 import { font, radius, weight, fontFamily, space } from '../../../src/theme/tokens';
 import { todayIso, shortDayYear } from '../../../src/utils/format';
+import { IconArrowLeft, IconRefresh, IconPlus, IconCheck, IconClose } from '../../../src/components/icons';
+import { useToast } from '../../../src/components/Toast';
 
 export default function GenerateScreen() {
   const { c } = useTheme();
@@ -39,9 +43,13 @@ export default function GenerateScreen() {
     );
   }, [query, storesQ.data]);
 
+  // Mutation takes explicit storeIds as its variable so `Retry these stores`
+  // can call it with the failed-only subset without depending on the async
+  // `selected` state update landing first.
+  const toast = useToast();
   const genMut = useMutation({
-    mutationFn: () => api.generate({
-      storeIds: selected,
+    mutationFn: (storeIds: string[]) => api.generate({
+      storeIds,
       runDate,
       bufferDays: Number(bufferDays) || 0,
       leadTimeOverrideDays: leadOverride.trim() ? Number(leadOverride) : null,
@@ -49,6 +57,36 @@ export default function GenerateScreen() {
     onSuccess: (r) => {
       setResult(r);
       qc.invalidateQueries({ queryKey: ['sis'] });
+      // Toast confirms the outcome even when we're staying on this screen
+      // (partial failures). On a clean success we auto-navigate; the toast
+      // still fires so the user sees confirmation on the list page too.
+      if (r.succeeded.length > 0 && r.failed.length === 0) {
+        toast.show(
+          `Generated ${r.succeeded.length} draft SI${r.succeeded.length === 1 ? '' : 's'} for ${shortDayYear(runDate)}.`,
+          { tone: 'success' },
+        );
+      } else if (r.succeeded.length > 0 && r.failed.length > 0) {
+        toast.show(
+          `${r.succeeded.length} SI${r.succeeded.length === 1 ? '' : 's'} created, ${r.failed.length} failed. See below to retry.`,
+          { tone: 'info' },
+        );
+      } else if (r.failed.length > 0) {
+        toast.show(
+          `Every store failed. Check the reasons below and retry.`,
+          { tone: 'error' },
+        );
+      }
+      // Brief §3 (daily flow): "land on SI list for that date". Auto-nav on
+      // full success. On partial failure we stay put so the user sees WHICH
+      // stores failed via the persistent red banner — quietly navigating
+      // would swallow the failure list.
+      if (r.failed.length === 0 && r.succeeded.length > 0) {
+        setTimeout(() => router.push(`/sis?runDate=${runDate}` as never), 700);
+      }
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { message?: string })?.message || 'Generation failed. Try again.';
+      toast.show(msg, { tone: 'error' });
     },
   });
 
@@ -56,10 +94,10 @@ export default function GenerateScreen() {
 
   return (
     <Screen>
+      <BackLink />
       <PageHeader
         title="Generate SIs"
         subtitle="Pick the stores you want fresh drafts for. Only your assigned stores are shown."
-        action={<Button label="Back to SI list" variant="secondary" onPress={() => router.push('/sis')} />}
       />
 
       {result && (
@@ -69,16 +107,42 @@ export default function GenerateScreen() {
               tone="success"
               title={`${result.succeeded.length} ${result.succeeded.length === 1 ? 'draft' : 'drafts'} created`}
               body={`Open the SI list to review the new drafts for ${shortDayYear(runDate)}.`}
-              action={<Button label="Open SI list" onPress={() => router.push('/sis')} />}
+              action={
+                <Button
+                  label="Open SI list"
+                  leading={<IconArrowLeft size={16} color="#ffffff" />}
+                  tooltip="Jump to the SI list, already filtered to the run date you just generated for."
+                  onPress={() => router.push('/sis')}
+                />
+              }
             />
           )}
           {result.failed.length > 0 && (
             <View style={{
-              backgroundColor: c.rBg, borderRadius: radius.md, padding: 14, gap: 8,
+              backgroundColor: c.rBg, borderRadius: radius.md, padding: 14, gap: 10,
             }}>
-              <Text style={{ color: c.rTx, fontSize: font.bodyLg, fontWeight: weight.semibold as TextStyle['fontWeight'], fontFamily }}>
-                {result.failed.length} store{result.failed.length === 1 ? '' : 's'} couldn't generate
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <Text style={{ color: c.rTx, fontSize: font.bodyLg, fontWeight: weight.semibold as TextStyle['fontWeight'], fontFamily }}>
+                  {result.failed.length} store{result.failed.length === 1 ? '' : 's'} couldn't generate
+                </Text>
+                {/* Retry just the failed stores — no re-picking. Preserves the
+                    original run configuration; the mock re-rolls the ~5%
+                    failure chance so retries usually succeed. */}
+                <Button
+                  label={genMut.isPending ? 'Retrying…' : `Retry ${result.failed.length === 1 ? 'this store' : 'these stores'}`}
+                  variant="secondary"
+                  leading={<IconRefresh size={16} color={c.fg} />}
+                  tooltip="Re-run generation only for the stores that failed. Nothing else is touched."
+                  onPress={() => {
+                    const retryIds = result.failed.map((f) => f.storeId);
+                    setSelected(retryIds);
+                    setResult(null);
+                    // Pass storeIds directly so we don't race on setSelected.
+                    genMut.mutate(retryIds);
+                  }}
+                  loading={genMut.isPending}
+                />
+              </View>
               {result.failed.map((f) => (
                 <View key={f.storeId} style={{ flexDirection: 'row', gap: 8 }}>
                   <Text style={{ color: c.fg, fontSize: font.body, fontWeight: weight.medium as TextStyle['fontWeight'], fontFamily, width: 200 }}>
@@ -103,11 +167,15 @@ export default function GenerateScreen() {
                 <Button
                   label="Select all"
                   variant="secondary"
+                  leading={<IconCheck size={14} color={c.fg} />}
+                  tooltip="Select every store you have access to."
                   onPress={() => setSelected((storesQ.data ?? []).map((s) => s.id))}
                 />
                 <Button
                   label="Clear"
                   variant="ghost"
+                  leading={<IconClose size={14} color={c.mut} />}
+                  tooltip="Deselect all stores."
                   onPress={() => setSelected([])}
                 />
               </View>
@@ -203,14 +271,21 @@ export default function GenerateScreen() {
               <View style={{ height: 4 }} />
               <Button
                 label={genMut.isPending ? 'Generating…' : `Generate ${selected.length || ''} SI${selected.length === 1 ? '' : 's'}`.trim()}
-                onPress={() => genMut.mutate()}
+                leading={<IconPlus size={16} color="#ffffff" />}
+                emphasis={canSubmit ? 'high' : 'normal'}
+                tooltip={
+                  !canSubmit
+                    ? 'Pick at least one store above and set a valid run date to enable.'
+                    : `Create fresh draft SIs for ${selected.length} store${selected.length === 1 ? '' : 's'} on ${shortDayYear(runDate)}.`
+                }
+                onPress={() => genMut.mutate(selected)}
                 disabled={!canSubmit}
                 loading={genMut.isPending}
                 fullWidth
               />
               {genMut.isError && (
                 <Text style={{ color: c.rTx, fontSize: font.small, fontFamily }}>
-                  {(genMut.error as { message?: string })?.message ?? 'Generate failed — try again.'}
+                  {(genMut.error as { message?: string })?.message ?? 'Generate failed. Try again.'}
                 </Text>
               )}
               <Text style={{ color: c.mut, fontSize: font.small, fontFamily }}>
@@ -220,6 +295,35 @@ export default function GenerateScreen() {
           </SectionCard>
         </View>
       </View>
+
+      <HelpPopover
+        title="Generate SIs"
+        sections={[
+          {
+            heading: 'When to use this',
+            body: 'Use Generate when the nightly engine has not run, when you need a fresh draft for a specific store, or when you want to catch up on a past date.',
+          },
+          {
+            heading: 'How the numbers are picked',
+            body: 'The engine looks at each SKU\'s Average Daily Consumption (ADC), the store\'s lead time, and your Buffer days. It then rounds up to full cases.',
+          },
+          {
+            heading: 'Steps',
+            numbered: true,
+            body: [
+              'Tick the stores you want drafts for.',
+              'Set the run date (usually today or tomorrow).',
+              'Adjust Buffer days if you expect a longer weekend or a spike.',
+              'Leave Lead time override blank to use each store\'s default.',
+              'Tap Generate. On success you\'ll land on the SI list, filtered to that date, with the new drafts marked "Just now".',
+            ],
+          },
+          {
+            heading: 'If a store fails',
+            body: 'The failure banner names the reason. Tap Retry these stores to try again without picking them all over. Generating over an existing draft simply overwrites it.',
+          },
+        ]}
+      />
     </Screen>
   );
 }

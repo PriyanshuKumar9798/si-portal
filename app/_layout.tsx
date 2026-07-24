@@ -7,6 +7,13 @@ import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '../src/theme/ThemeContext';
 import { AuthProvider } from '../src/auth/AuthContext';
+import { installWebFocusStyles } from '../src/theme/webFocusStyle';
+import { ToastProvider } from '../src/components/Toast';
+import { NavGuardProvider } from '../src/components/NavGuardProvider';
+
+// Install the a11y focus shim ONCE, at module load, before any component
+// mounts. Web-only; no-op on native. See webFocusStyle.ts for rationale.
+installWebFocusStyles();
 
 export default function RootLayout() {
   const qc = useMemo(() => new QueryClient({
@@ -23,10 +30,14 @@ export default function RootLayout() {
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         <AuthProvider>
-          <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-            <Stack.Screen name="login" />
-            <Stack.Screen name="(app)" />
-          </Stack>
+          <ToastProvider>
+            <NavGuardProvider>
+              <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+                <Stack.Screen name="login" />
+                <Stack.Screen name="(app)" />
+              </Stack>
+            </NavGuardProvider>
+          </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
