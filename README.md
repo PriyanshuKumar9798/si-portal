@@ -123,4 +123,4 @@ Types live in `src/api/types.ts`. Field names are frozen; enums are lowercase.
 
 ---
 
-_Design ported from Claude Design (SiListFrame.dc.html + SI Portal.dc.html). Design language ported from BS FA (`bs-franchise-app-design`)._
+_Design ported from the design reference files (SiListFrame.dc.html + SI Portal.dc.html). Design language ported from BS FA (`bs-franchise-app-design`)._

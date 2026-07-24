@@ -1,6 +1,6 @@
 // Design tokens — the SINGLE source of truth for every colour, spacing, and
 // font-size on the platform. Values are extracted 1:1 from the approved
-// Claude Design output (SiListFrame.dc.html) so what ships matches the
+// design reference output (SiListFrame.dc.html) so what ships matches the
 // design pixel-for-pixel. Never inline a hex in a component; import from here.
 
 export type ThemeMode = 'light' | 'dark';
@@ -124,7 +124,7 @@ export const radius = {
 
 // ─── Font sizing ────────────────────────────────────────────────────────────
 // Kept as a small numeric map — RN needs numbers, not Tailwind classes.
-// Ramp bumped +1pt from the initial Claude Design port (10/11/13 → 11/12/14)
+// Ramp bumped +1pt from the initial design reference port (10/11/13 → 11/12/14)
 // after live tests read as too tight — modern ops tools (Linear, Vercel,
 // GitHub, Retool) sit at 14 body / 12 caption / 11 micro. Header ramp
 // (h1-h3) stayed put because those already tested fine.

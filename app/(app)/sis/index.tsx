@@ -1,5 +1,5 @@
-// SI list — the app's landing page. Pixel-parity port of the approved Claude
-// Design output (SiListFrame.dc.html): PageHeader, filter pill row, 3-metric
+// SI list — the app's landing page. Pixel-parity port of the approved design
+// reference (SiListFrame.dc.html): PageHeader, filter pill row, 3-metric
 // headline strip, SectionCard with active-filter chip strip, table with
 // sticky Store column, Delete action on drafts only, insight footer.
 //

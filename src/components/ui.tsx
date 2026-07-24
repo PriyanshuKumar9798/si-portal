@@ -1,6 +1,6 @@
 // UI kit — every primitive the design uses, extracted into RN-friendly
 // components that read from the theme context. The visual language is a
-// direct port of the Claude Design output (SiListFrame.dc.html) for the
+// direct port of the design reference output (SiListFrame.dc.html) for the
 // components it drew (Chip, StatusChip, MetricCard, SectionCard, Button)
 // and follows the same conventions for those it didn't (Field, Banner,
 // DialogShell, MultiSelectPill).
