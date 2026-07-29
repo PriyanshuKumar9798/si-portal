@@ -10,7 +10,12 @@ import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../auth/AuthContext';
 import { font, radius, weight, fontFamily } from '../theme/tokens';
 import { useOutsideClick } from '../hooks/useOutsideClick';
-import { IconChevronDown, IconChevronUp, IconSun, IconMoon } from './icons';
+import {
+  IconChevronDown, IconChevronUp, IconSun, IconMoon,
+  IconHome, IconLayoutDashboard, IconLifeBuoy,
+  IconGraduationCap, IconBell,
+} from './icons';
+import { BurgerSinghLogo } from './BurgerSinghLogo';
 import { Tooltip } from './Tooltip';
 import { useBreakpoint } from './ui';
 import { guardNav } from '../hooks/useUnsavedChangesGuard';
@@ -61,9 +66,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <TopBar />
       <View style={{ flex: 1 }}>{children}</View>
+      <BottomNav />
     </View>
   );
 }
+
+// Height of the bottom nav (56 px content + safe-area inset). Every Screen
+// container adds this as bottom padding so the last card is never obscured.
+export const BOTTOM_NAV_HEIGHT = 68;
 
 function TopBar() {
   const { c } = useTheme();
@@ -94,28 +104,42 @@ function TopBar() {
       {/* Left cluster — logo, product, nav */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: isPhone ? 12 : 28, minWidth: 0, flexShrink: 1 } as ViewStyle}>
         <Pressable
-          onPress={() => guardNav(() => router.push('/sis'))}
+          onPress={() => guardNav(() => router.push('/'))}
           accessibilityRole="link"
-          accessibilityLabel="Burger Singh SI Portal, go home"
+          accessibilityLabel="Burger Singh Franchise Ops home"
           style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
         >
-          <View style={{
-            width: 28, height: 28, borderRadius: 8, backgroundColor: c.redSolid,
-            alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15, fontFamily }}>B</Text>
-          </View>
+          <BurgerSinghLogo size={30} />
           {!hideWordmark && (
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <Text style={{ color: c.fg, fontWeight: weight.bold as TextStyle['fontWeight'], fontSize: 15, fontFamily }}>Burger Singh</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Text style={{
-                color: c.mut, fontSize: 11, letterSpacing: 0.5,
-                fontWeight: weight.semibold as TextStyle['fontWeight'], textTransform: 'uppercase', fontFamily,
-              }}>SI Portal</Text>
+                color: c.fg,
+                fontWeight: weight.bold as TextStyle['fontWeight'],
+                fontSize: 17, letterSpacing: 0.3, fontFamily,
+              }}>
+                BURGER SINGH
+              </Text>
+              {/* Vertical divider — sits full-cap-height between the wordmark
+                  and the product tag (Originn's canonical "| FOR BUILDERS"
+                  treatment) so the two labels read as siblings, not a two-line
+                  stack. */}
+              <View style={{ width: 1, height: 18, backgroundColor: c.border }} />
+              <Text style={{
+                color: c.red,
+                fontSize: 12, letterSpacing: 1.2,
+                fontWeight: weight.semibold as TextStyle['fontWeight'],
+                textTransform: 'uppercase', fontFamily,
+              }}>
+                Franchise Ops
+              </Text>
             </View>
           )}
         </Pressable>
-        <NavList path={path} />
+        {/* Section nav is context-aware: only appears when the user is inside
+            the SI Portal section. Home and Support don't need in-section
+            tabs. Once Dashboards / Academy / Alerts ship, each will register
+            their own in-section nav here the same way. */}
+        {isSiPortalPath(path) && <NavList path={path} />}
       </View>
 
       {/* Right cluster — theme toggle + user pill */}
@@ -264,6 +288,141 @@ function MenuRow({ label, onPress, danger }: { label: string; onPress: () => voi
     >
       <Text style={{ color: danger ? c.rTx : c.fg, fontSize: font.body, fontFamily }}>{label}</Text>
     </Pressable>
+  );
+}
+
+// isSiPortalPath — the SI Portal section owns /sis/* + /cycle. Home, Support,
+// and future sections have no in-section tabs of their own (yet), so gating
+// on this predicate keeps the top bar clean everywhere else.
+function isSiPortalPath(path: string): boolean {
+  return path === '/sis' || path.startsWith('/sis/') || path.startsWith('/cycle');
+}
+
+// isRootPath — Home lives at "/" inside the (app) group. Expo Router surfaces
+// both "/" and "" here depending on the entry point, so accept both.
+function isRootPath(path: string): boolean {
+  return path === '/' || path === '';
+}
+
+// Bottom nav — the persistent app switcher. Two live entries (Home, SI Portal,
+// Support) and three greyed-out placeholders for future modules the user
+// mentioned by name: Dashboards, Burger Singh Academy, Central alerts.
+// Placeholders render but don't route — a tooltip explains "coming soon" so
+// the icons don't look broken. Mirrors the Franchisee-app pattern (fixed
+// bottom nav with equal-width tiles + safe-area inset on iOS PWA).
+interface BottomTab {
+  key: string;
+  label: string;
+  href: string | null;
+  Icon: React.ComponentType<{ size?: number; color?: string }>;
+  match: (path: string) => boolean;
+  tooltip: string;
+  disabled?: boolean;
+}
+const BOTTOM_TABS: BottomTab[] = [
+  {
+    key: 'home',
+    label: 'Home',
+    href: '/',
+    Icon: IconHome,
+    match: isRootPath,
+    tooltip: 'Home',
+  },
+  {
+    key: 'si',
+    label: 'SI Portal',
+    href: '/sis',
+    Icon: IconLayoutDashboard,
+    match: isSiPortalPath,
+    tooltip: 'Suggestive Indents — daily review, generate, and burn cycle.',
+  },
+  {
+    key: 'support',
+    label: 'Support',
+    href: '/support',
+    Icon: IconLifeBuoy,
+    match: (p) => p === '/support' || p.startsWith('/support/'),
+    tooltip: 'Raise a ticket, view your open issues, and reply to conversations.',
+  },
+  {
+    key: 'academy',
+    label: 'Academy',
+    href: null,
+    Icon: IconGraduationCap,
+    match: () => false,
+    tooltip: 'Burger Singh Academy — training and playbooks. Coming soon.',
+    disabled: true,
+  },
+  {
+    key: 'alerts',
+    label: 'Alerts',
+    href: null,
+    Icon: IconBell,
+    match: () => false,
+    tooltip: 'Central alerts from HQ. Coming soon.',
+    disabled: true,
+  },
+];
+
+function BottomNav() {
+  const { c } = useTheme();
+  const router = useRouter();
+  const path = usePathname() || '/';
+  const { isPhone } = useBreakpoint();
+  const activeKey = BOTTOM_TABS
+    .filter((t) => t.match(path))
+    .sort((a, b) => (b.href?.length ?? 0) - (a.href?.length ?? 0))[0]?.key;
+  return (
+    <View
+      // RN Web accepts CSS env() as a string, but ViewStyle typing rejects it.
+      // Cast via unknown so the safe-area inset still lands on iOS PWA.
+      style={{
+        height: BOTTOM_NAV_HEIGHT,
+        flexDirection: 'row',
+        backgroundColor: c.card,
+        borderTopColor: c.border, borderTopWidth: 1,
+        paddingHorizontal: isPhone ? 4 : 12,
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      } as unknown as ViewStyle}
+    >
+      {BOTTOM_TABS.map((t) => {
+        const active = t.key === activeKey;
+        // Tooltip wraps its child in a position:relative View that doesn't
+        // grow, so we place the flex:1 cell outside the tooltip. The tooltip
+        // then hugs the Pressable, and the outer View is what fills the row.
+        return (
+          <View key={t.key} style={{ flex: 1 }}>
+            {/* Bottom-nav tabs have visible labels already; a hover tooltip
+                on top would just be noise. We keep the tooltip ONLY on
+                disabled tabs so a "coming soon" hint has somewhere to live. */}
+            <Tooltip label={t.disabled ? t.tooltip : ''} placement="top">
+              <Pressable
+                onPress={() => {
+                  if (t.disabled || !t.href) return;
+                  guardNav(() => router.push(t.href as never));
+                }}
+                accessibilityRole={t.disabled ? 'button' : 'link'}
+                accessibilityLabel={t.label + (t.disabled ? ', coming soon' : '')}
+                accessibilityState={{ selected: active, disabled: !!t.disabled }}
+                style={{
+                  alignItems: 'center', justifyContent: 'center',
+                  paddingVertical: 8, gap: 4,
+                  opacity: t.disabled ? 0.4 : 1,
+                }}
+              >
+                <t.Icon size={20} color={active ? c.red : c.mut} />
+                <Text style={{
+                  color: active ? c.red : c.mut,
+                  fontSize: 11,
+                  fontWeight: (active ? weight.semibold : weight.medium) as TextStyle['fontWeight'],
+                  fontFamily,
+                }} numberOfLines={1}>{t.label}</Text>
+              </Pressable>
+            </Tooltip>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 

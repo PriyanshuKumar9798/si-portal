@@ -19,7 +19,8 @@ import {
   IconDownload, IconSave, IconTrash, IconLock, IconAlertTriangle, IconFileText,
   IconUser, IconClock,
 } from '../../../src/components/icons';
-import { BackLink } from '../../../src/components/BackLink';
+import { Breadcrumb } from '../../../src/components/Breadcrumb';
+import { usePageTitle } from '../../../src/hooks/usePageTitle';
 import { HelpPopover } from '../../../src/components/HelpPopover';
 import { useUnsavedChangesGuard } from '../../../src/hooks/useUnsavedChangesGuard';
 import { UnsavedChangesBar, UNSAVED_BAR_FOOTER_PAD } from '../../../src/components/UnsavedChangesBar';
@@ -27,6 +28,7 @@ import { useToast } from '../../../src/components/Toast';
 
 export default function SiDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  usePageTitle(`SI #${(id ?? '').slice(0, 8)}`);
   const { c } = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
@@ -139,6 +141,7 @@ export default function SiDetailScreen() {
   if (q.isLoading) {
     return (
       <Screen>
+        <Breadcrumb parent={{ label: 'SI Portal', href: '/sis' }} current="SI detail" />
         <PageHeader title="SI detail" subtitle="Loading…" />
         <SectionCard title=" " contentPadding={false}><LoadingState /></SectionCard>
       </Screen>
@@ -147,6 +150,7 @@ export default function SiDetailScreen() {
   if (q.isError || !q.data) {
     return (
       <Screen>
+        <Breadcrumb parent={{ label: 'SI Portal', href: '/sis' }} current="SI detail" />
         <PageHeader title="SI detail" />
         <SectionCard title="Couldn't load this SI" contentPadding={false}>
           <ErrorState onRetry={() => q.refetch()} body="The request failed or this SI is no longer available." />
@@ -160,7 +164,7 @@ export default function SiDetailScreen() {
 
   return (
     <Screen>
-      <BackLink guard={guardNav} />
+      <Breadcrumb parent={{ label: 'SI Portal', href: '/sis' }} current={`SI #${data.id.slice(0, 8)}`} />
 
       {/* Header + action cluster. Buttons carry (1) a leading icon so they
           are scannable at a glance, (2) a hover tooltip so intent is clear

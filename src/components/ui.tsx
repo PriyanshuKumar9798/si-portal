@@ -83,13 +83,16 @@ export function MicroLabel({ children, style }: { children: ReactNode; style?: S
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 export function Button({
-  label, onPress, variant = 'primary', leading, disabled, loading, fullWidth,
+  label, onPress, variant = 'primary', leading, trailing, disabled, loading, fullWidth,
   emphasis, tooltip, accessibilityLabel,
 }: {
   label: string;
   onPress?: () => void;
   variant?: ButtonVariant;
   leading?: ReactNode;
+  /** Optional trailing icon rendered AFTER the label. Handy for "Send OTP →"
+   *  style CTAs where the arrow reinforces the forward motion. */
+  trailing?: ReactNode;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
@@ -165,6 +168,7 @@ export function Button({
         fontWeight: weight.semibold as TextStyle['fontWeight'],
         fontFamily,
       }}>{label}</Text>
+      {trailing && !loading ? trailing : null}
     </Pressable>
   );
   if (!tooltip) return btn;
@@ -475,7 +479,9 @@ export function Screen({ children }: { children: ReactNode }) {
           marginHorizontal: 'auto',
           paddingHorizontal: isPhone ? 16 : 32,
           paddingTop: isPhone ? 16 : 24,
-          paddingBottom: isPhone ? 32 : 48,
+          // Add BOTTOM_NAV_HEIGHT (68) so the last card clears the persistent
+          // bottom nav; the base 32/48 keeps breathing room below the last row.
+          paddingBottom: (isPhone ? 32 : 48) + 68,
           gap: isPhone ? space.xl : space.xxl,
         }}
       >

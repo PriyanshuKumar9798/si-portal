@@ -27,12 +27,19 @@ export default function AuthedLayout() {
   }
   return (
     <AppShell>
+      {/* Browser-tab titles are set here (route-level) so every page reads
+          "<Page> · Burger Singh" in the tab. Section pages carry their own
+          scope; deep pages (SI detail, ticket detail) override the doc title
+          at runtime with the record id. */}
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="sis/index" options={{ title: 'Suggestive Indents' }} />
-        <Stack.Screen name="sis/generate" options={{ title: 'Generate SIs' }} />
-        <Stack.Screen name="sis/[id]" options={{ title: 'SI detail' }} />
-        <Stack.Screen name="exceptions" options={{ title: 'Exceptions' }} />
-        <Stack.Screen name="discrepancies" options={{ title: 'Mapping discrepancies' }} />
+        <Stack.Screen name="index" options={{ title: 'Home · Burger Singh' }} />
+        <Stack.Screen name="sis/index" options={{ title: 'SI Portal · Burger Singh' }} />
+        <Stack.Screen name="sis/generate" options={{ title: 'Generate SIs · SI Portal' }} />
+        <Stack.Screen name="sis/[id]" options={{ title: 'SI detail · SI Portal' }} />
+        <Stack.Screen name="cycle" options={{ title: 'Indent cycle · SI Portal' }} />
+        <Stack.Screen name="support" options={{ title: 'Support · Burger Singh' }} />
+        <Stack.Screen name="exceptions" options={{ title: 'Exceptions · Burger Singh' }} />
+        <Stack.Screen name="discrepancies" options={{ title: 'Mapping discrepancies · Burger Singh' }} />
       </Stack>
     </AppShell>
   );

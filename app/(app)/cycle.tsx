@@ -19,6 +19,8 @@ import {
   Body, Button, EmptyState, ErrorState, LoadingState, MetricCard,
   PageHeader, Screen, SectionCard, useBreakpoint,
 } from '../../src/components/ui';
+import { Breadcrumb } from '../../src/components/Breadcrumb';
+import { usePageTitle } from '../../src/hooks/usePageTitle';
 import { MultiSelectPill } from '../../src/components/MultiSelectPill';
 import { HelpPopover } from '../../src/components/HelpPopover';
 import { font, radius, weight, fontFamily, space } from '../../src/theme/tokens';
@@ -33,6 +35,7 @@ const stickyHeader = (): ViewStyle | null =>
     : null;
 
 export default function CycleScreen() {
+  usePageTitle('Indent cycle');
   const { c } = useTheme();
   const router = useRouter();
   const { isPhone } = useBreakpoint();
@@ -59,6 +62,7 @@ export default function CycleScreen() {
 
   return (
     <Screen>
+      <Breadcrumb parent={{ label: 'SI Portal', href: '/sis' }} current="Indent cycle" />
       <PageHeader
         title="Indent cycle & stock"
         subtitle="Next indent date, runway, and items at risk of running out before the next order lands."

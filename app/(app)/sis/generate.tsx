@@ -12,7 +12,8 @@ import { useTheme } from '../../../src/theme/ThemeContext';
 import { api } from '../../../src/api/client';
 import type { GenerateSiResult } from '../../../src/api/types';
 import { Body, Button, Field, MicroLabel, PageHeader, Screen, SectionCard, Banner } from '../../../src/components/ui';
-import { BackLink } from '../../../src/components/BackLink';
+import { Breadcrumb } from '../../../src/components/Breadcrumb';
+import { usePageTitle } from '../../../src/hooks/usePageTitle';
 import { HelpPopover } from '../../../src/components/HelpPopover';
 import { font, radius, weight, fontFamily, space } from '../../../src/theme/tokens';
 import { todayIso, shortDayYear } from '../../../src/utils/format';
@@ -20,6 +21,7 @@ import { IconArrowLeft, IconRefresh, IconPlus, IconCheck, IconClose, IconCalenda
 import { useToast } from '../../../src/components/Toast';
 
 export default function GenerateScreen() {
+  usePageTitle('Generate SIs');
   const { c } = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
@@ -132,7 +134,7 @@ export default function GenerateScreen() {
 
   return (
     <Screen>
-      <BackLink />
+      <Breadcrumb parent={{ label: 'SI Portal', href: '/sis' }} current="Generate SIs" />
       <PageHeader
         title="Generate SIs"
         subtitle="Pick the stores you want fresh drafts for. Only your assigned stores are shown."
@@ -207,14 +209,12 @@ export default function GenerateScreen() {
                   label="Select all"
                   variant="secondary"
                   leading={<IconCheck size={14} color={c.fg} />}
-                  tooltip="Select every store you have access to."
                   onPress={() => setSelected((storesQ.data ?? []).map((s) => s.id))}
                 />
                 <Button
                   label="Clear"
                   variant="ghost"
                   leading={<IconClose size={14} color={c.mut} />}
-                  tooltip="Deselect all stores."
                   onPress={() => setSelected([])}
                 />
               </View>

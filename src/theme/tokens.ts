@@ -36,6 +36,10 @@ interface Palette {
   rDot: string;            // red status dot
   sTx: string;             // slate text
   sBg: string;             // slate chip bg
+  bTx: string;             // blue text (channel chip, Zoho "Open" status)
+  bBg: string;             // blue chip bg
+  bDot: string;            // blue dot
+  bBorder: string;         // blue chip border (Franchisee Support parity)
 }
 
 // ─── Palettes ────────────────────────────────────────────────────────────
@@ -70,6 +74,10 @@ export const light: Palette = {
   rDot: '#ef4444',
   sTx: '#64748b',                   // slate-500 for neutral metadata
   sBg: '#f1f5f9',                   // slate-100 chip
+  bTx: '#1d4ed8',                   // blue-700 — Franchisee Support "Open" text
+  bBg: '#eff6ff',                   // blue-50 — Franchisee Support channel chip
+  bDot: '#3b82f6',                  // blue-500
+  bBorder: '#bfdbfe',               // blue-200
 };
 
 export const dark: Palette = {
@@ -96,6 +104,10 @@ export const dark: Palette = {
   rDot: '#ef4444',
   sTx: '#94a3b8',                   // slate-400
   sBg: 'rgba(51,65,85,0.7)',
+  bTx: '#93c5fd',                   // blue-300 (dark surfaces)
+  bBg: 'rgba(23,37,84,0.55)',       // blue-950/55
+  bDot: '#3b82f6',
+  bBorder: 'rgba(30,64,175,0.4)',   // blue-800/40
 };
 
 export const paletteFor = (mode: ThemeMode): Palette => (mode === 'dark' ? dark : light);

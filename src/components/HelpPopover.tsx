@@ -45,7 +45,9 @@ export function HelpPopover({ title, sections, label = 'Help' }: HelpPopoverProp
         // scrolls. Native falls back to absolute (RN doesn't parse 'fixed').
         position: Platform.OS === 'web' ? ('fixed' as ViewStyle['position']) : 'absolute',
         right: 20,
-        bottom: 20,
+        // Lift the pill above the persistent bottom nav (68 px) + a small
+        // gutter so it doesn't overlap the Academy/Alerts tabs.
+        bottom: 88,
         zIndex: 90,
       } as ViewStyle}
     >

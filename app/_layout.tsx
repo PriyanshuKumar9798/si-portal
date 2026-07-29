@@ -10,6 +10,7 @@ import { AuthProvider } from '../src/auth/AuthContext';
 import { installWebFocusStyles } from '../src/theme/webFocusStyle';
 import { ToastProvider } from '../src/components/Toast';
 import { NavGuardProvider } from '../src/components/NavGuardProvider';
+import { TicketStoreProvider } from '../src/support/TicketStore';
 
 // Install the a11y focus shim ONCE, at module load, before any component
 // mounts. Web-only; no-op on native. See webFocusStyle.ts for rationale.
@@ -32,10 +33,12 @@ export default function RootLayout() {
         <AuthProvider>
           <ToastProvider>
             <NavGuardProvider>
-              <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
-                <Stack.Screen name="login" />
-                <Stack.Screen name="(app)" />
-              </Stack>
+              <TicketStoreProvider>
+                <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
+                  <Stack.Screen name="login" options={{ title: 'Sign in · Burger Singh' }} />
+                  <Stack.Screen name="(app)" options={{ title: 'Burger Singh' }} />
+                </Stack>
+              </TicketStoreProvider>
             </NavGuardProvider>
           </ToastProvider>
         </AuthProvider>

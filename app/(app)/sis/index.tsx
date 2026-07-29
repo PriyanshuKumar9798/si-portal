@@ -25,6 +25,8 @@ import { useTheme } from '../../../src/theme/ThemeContext';
 import { api } from '../../../src/api/client';
 import type { SiSummary, SiStatus } from '../../../src/api/types';
 import { Body, Button, ErrorState, EmptyState, LoadingState, MetricCard, PageHeader, Screen, SectionCard, Segment, StatusChip, MetaChip, FilterChip } from '../../../src/components/ui';
+import { Breadcrumb } from '../../../src/components/Breadcrumb';
+import { usePageTitle } from '../../../src/hooks/usePageTitle';
 import { MultiSelectPill } from '../../../src/components/MultiSelectPill';
 import { IconTrash, IconCalendar, IconChevronDown, IconChevronUp, IconBulb, IconUser, IconClock, IconLock, IconAlert } from '../../../src/components/icons';
 import { HelpPopover } from '../../../src/components/HelpPopover';
@@ -35,6 +37,7 @@ import { font, radius, space, weight, fontFamily } from '../../../src/theme/toke
 import { refreshedAt, shortDayYear, todayIso } from '../../../src/utils/format';
 
 export default function SiListScreen() {
+  usePageTitle('SI Portal');
   const { c } = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
@@ -100,6 +103,7 @@ export default function SiListScreen() {
 
   return (
     <Screen>
+      <Breadcrumb parent={{ label: 'Home', href: '/' }} current="SI Portal" />
       <PageHeader
         title="Suggestive Indents"
         subtitle={`Updated daily · last refreshed ${refreshedAt(new Date().toISOString())}`}
