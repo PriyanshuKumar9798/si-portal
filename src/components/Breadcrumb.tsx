@@ -33,10 +33,19 @@ export function Breadcrumb({ parent, current }: { parent: Crumb; current: string
   const { c } = useTheme();
   const router = useRouter();
 
-  // Back arrow — try history first, fall back to a direct push (or the
-  // provided onPress) so the user is never stranded on refresh / deep link.
+  // Back arrow. Rule:
+  //   1. If the parent supplies an onPress callback, this crumb represents
+  //      an INTRA-route hop (e.g. Support ticket detail → Support list, all
+  //      under the /support URL). Use the callback so we stay on the same
+  //      URL — falling back to router.back() would pop past /support to
+  //      whatever preceded it (a common footgun that sent the user to /sis
+  //      after opening a ticket).
+  //   2. Otherwise treat this like a real cross-route back: try history,
+  //      then fall back to a direct push to the parent's href so deep-linked
+  //      users aren't stranded.
   const goBack = useCallback(() => {
     guardNav(() => {
+      if (parent.onPress) { parent.onPress(); return; }
       const canBack =
         (typeof (router as any).canGoBack === 'function' && (router as any).canGoBack()) ||
         (Platform.OS === 'web' && typeof window !== 'undefined' && window.history.length > 1);
@@ -44,8 +53,7 @@ export function Breadcrumb({ parent, current }: { parent: Crumb; current: string
         router.back();
         return;
       }
-      if (parent.onPress) { parent.onPress(); return; }
-      if (parent.href)    { router.push(parent.href as never); return; }
+      if (parent.href) { router.push(parent.href as never); return; }
     });
   }, [router, parent.href, parent.onPress]);
 
