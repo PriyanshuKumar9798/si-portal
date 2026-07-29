@@ -23,6 +23,7 @@ import {
 } from '../components/icons';
 import type { Reply, UserTicket } from './model';
 import { avatarBg as avatarBgOf, fmtAbs } from './model';
+import { useSetDirty, guardNav } from '../hooks/useUnsavedChangesGuard';
 
 // ─── ReplyComposer ────────────────────────────────────────────────────
 
@@ -39,6 +40,16 @@ export function ReplyComposer({
   const [attachments, setAttachments] = useState<string[]>([]);
 
   const canSend = plainText(body).trim().length > 0;
+
+  // Register unsaved state so navigation elsewhere prompts a confirm dialog.
+  // Anything the user typed OR attached OR added to CCs counts as dirty.
+  const ccChanged = cc.length !== ticket.secondaryContacts.length ||
+    cc.some((v, i) => v !== ticket.secondaryContacts[i]);
+  const isDirty = canSend || attachments.length > 0 || ccChanged;
+  useSetDirty(isDirty, 'You have a draft reply. Discard it?');
+
+  // Cancel guards the draft — if there's typed content, confirm before losing it.
+  const cancelWithGuard = () => guardNav(onCancel);
 
   const send = () => {
     if (!canSend) return;
@@ -84,8 +95,8 @@ export function ReplyComposer({
           leading={<IconSend size={13} color="#fff" />}
           onPress={send}
         />
-        <Button label="Save Draft" variant="secondary" onPress={onCancel} />
-        <Button label="Cancel" variant="ghost" onPress={onCancel} />
+        <Button label="Save Draft" variant="secondary" onPress={cancelWithGuard} />
+        <Button label="Cancel" variant="ghost" onPress={cancelWithGuard} />
       </View>
     </View>
   );
@@ -104,6 +115,9 @@ export function CommentComposer({
   const [attachments, setAttachments] = useState<string[]>([]);
 
   const canSend = body.trim().length > 0;
+  const isDirty = canSend || attachments.length > 0;
+  useSetDirty(isDirty, 'You have a comment in progress. Discard it?');
+  const cancelWithGuard = () => guardNav(onCancel);
 
   const send = () => {
     if (!canSend) return;
@@ -162,7 +176,7 @@ export function CommentComposer({
           leading={<IconMessageSquare size={13} color={c.yTx} />}
           onPress={send}
         />
-        <Button label="Cancel" variant="ghost" onPress={onCancel} />
+        <Button label="Cancel" variant="ghost" onPress={cancelWithGuard} />
       </View>
     </View>
   );

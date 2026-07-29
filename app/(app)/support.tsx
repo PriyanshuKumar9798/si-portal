@@ -1,63 +1,47 @@
-// Support — root route. Switches between three sub-pages (list / detail / new)
-// using local page state; ticket data itself lives in the app-wide
-// TicketStoreProvider so status changes (Kanban drag, replies, new tickets)
-// survive when the user navigates away and back.
+// Support — root route. Two sub-pages that share the /support URL:
+//   • list   — the "My Area" landing
+//   • detail — a specific ticket's thread, opened via ?t=<id>
+//
+// The "Add ticket" flow lives on its own /add-ticket route (see
+// app/(app)/add-ticket.tsx) so browser-back and the breadcrumb both land on
+// the Support home naturally, and the unsaved-changes guard runs through the
+// standard router-based navigation path.
 
-import { useEffect, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { MyArea } from '../../src/support/MyArea';
 import { TicketDetail } from '../../src/support/TicketDetail';
-import { NewTicket } from '../../src/support/NewTicket';
 import type { Reply } from '../../src/support/model';
 import { useTicketStore } from '../../src/support/TicketStore';
 import { useToast } from '../../src/components/Toast';
 import { usePageTitle } from '../../src/hooks/usePageTitle';
 
-type Page = 'list' | 'new' | 'detail';
+type Page = 'list' | 'detail';
 
 export default function SupportRoute() {
   const { show } = useToast();
-  const { tickets, patch, add, addReply, setStatus } = useTicketStore();
-  const params = useLocalSearchParams<{ new?: string; t?: string }>();
-  const [page, setPage] = useState<Page>('list');
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const active = tickets.find((t) => t.id === activeId) ?? null;
+  const router = useRouter();
+  const { tickets, patch, addReply, setStatus } = useTicketStore();
+  const params = useLocalSearchParams<{ t?: string }>();
 
-  // Deep-link support: /support?new=1 opens the compose form,
-  // /support?t=<id> opens that ticket's detail. Fires ONCE on mount so
-  // manual navigation later doesn't get overridden by stale query params.
-  useEffect(() => {
-    if (params.new === '1') setPage('new');
-    else if (typeof params.t === 'string' && params.t) {
-      setActiveId(params.t);
-      setPage('detail');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Deep-link support: /support?t=<id> opens that ticket's detail on first
+  // render. Lazy `useState` initializer so a browser refresh lands directly
+  // on the detail page without a flash of the list.
+  const [page, setPage] = useState<Page>(() =>
+    typeof params.t === 'string' && params.t ? 'detail' : 'list',
+  );
+  const [activeId, setActiveId] = useState<string | null>(() =>
+    typeof params.t === 'string' && params.t ? params.t : null,
+  );
+  const active = tickets.find((t) => t.id === activeId) ?? null;
 
   const openTicket = (id: string) => { setActiveId(id); setPage('detail'); };
   const goList = () => { setPage('list'); setActiveId(null); };
-  const goNew = () => { setPage('new'); setActiveId(null); };
+  const goAdd = () => router.push('/add-ticket' as never);
 
   usePageTitle(
-    page === 'new'    ? 'Submit a ticket' :
-    page === 'detail' ? (active ? `Ticket #${active.id}` : 'Support') :
-                        'Support'
+    page === 'detail' ? (active ? `Ticket #${active.id}` : 'Support') : 'Support'
   );
-
-  if (page === 'new') {
-    return (
-      <NewTicket
-        onCancel={goList}
-        onCreate={(t) => {
-          add(t);
-          setActiveId(t.id);
-          setPage('detail');
-          show(`Ticket #${t.id} submitted`, { tone: 'success' });
-        }}
-      />
-    );
-  }
 
   if (page === 'detail' && active) {
     return (
@@ -89,7 +73,7 @@ export default function SupportRoute() {
     <MyArea
       tickets={tickets}
       onOpen={openTicket}
-      onNew={goNew}
+      onNew={goAdd}
       onMove={(id, nextStatus) => {
         const t = tickets.find((x) => x.id === id);
         if (!t || t.status === nextStatus) return;

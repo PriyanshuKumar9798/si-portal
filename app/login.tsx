@@ -9,14 +9,25 @@ import { View, Text, KeyboardAvoidingView, Platform, ScrollView, type TextStyle 
 import { useRouter } from 'expo-router';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useAuth } from '../src/auth/AuthContext';
-import { useTheme } from '../src/theme/ThemeContext';
+import { LightScopeProvider, useTheme } from '../src/theme/ThemeContext';
 import { Body, Button, useBreakpoint } from '../src/components/ui';
 import { font, radius, weight, fontFamily } from '../src/theme/tokens';
 import { IconArrowRight, IconMail } from '../src/components/icons';
 import { BurgerSinghLogo } from '../src/components/BurgerSinghLogo';
 import type { ApiError } from '../src/api/types';
 
+// Route entry — wraps the actual form in a scoped LIGHT theme so the sign-in
+// page always reads as its brand-forward light treatment, regardless of what
+// the signed-in account has persisted globally (dark, if that's their taste).
 export default function LoginScreen() {
+  return (
+    <LightScopeProvider>
+      <LoginBody />
+    </LightScopeProvider>
+  );
+}
+
+function LoginBody() {
   const router = useRouter();
   const { signIn, isAuthenticated, isLoading: authLoading } = useAuth();
   const { c } = useTheme();

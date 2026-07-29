@@ -38,6 +38,7 @@ export default function AuthedLayout() {
         <Stack.Screen name="sis/[id]" options={{ title: 'SI detail · SI Portal' }} />
         <Stack.Screen name="cycle" options={{ title: 'Indent cycle · SI Portal' }} />
         <Stack.Screen name="support" options={{ title: 'Support · Burger Singh' }} />
+        <Stack.Screen name="add-ticket" options={{ title: 'Submit a ticket · Support' }} />
         <Stack.Screen name="exceptions" options={{ title: 'Exceptions · Burger Singh' }} />
         <Stack.Screen name="discrepancies" options={{ title: 'Mapping discrepancies · Burger Singh' }} />
       </Stack>

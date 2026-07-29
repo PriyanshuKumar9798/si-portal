@@ -15,6 +15,7 @@ import { Body, Button, Field, MicroLabel, PageHeader, Screen, SectionCard, Banne
 import { Breadcrumb } from '../../../src/components/Breadcrumb';
 import { usePageTitle } from '../../../src/hooks/usePageTitle';
 import { HelpPopover } from '../../../src/components/HelpPopover';
+import { useSetDirty } from '../../../src/hooks/useUnsavedChangesGuard';
 import { font, radius, weight, fontFamily, space } from '../../../src/theme/tokens';
 import { todayIso, shortDayYear } from '../../../src/utils/format';
 import { IconArrowLeft, IconRefresh, IconPlus, IconCheck, IconClose, IconCalendar } from '../../../src/components/icons';
@@ -46,6 +47,20 @@ export default function GenerateScreen() {
   // range, so a 21-day default keeps the common case one-tap.
   const [indentDays, setIndentDays] = useState('21');
   const [result, setResult] = useState<GenerateSiResult | null>(null);
+
+  // Any user-driven change on this form is unsaved work. Selecting a store,
+  // tweaking the indent-days field, or having pending stores queued up all
+  // count. Reset when a result comes back (success or explicit failure —
+  // both mean the intent was committed to the API). Prefilled selections
+  // from ?storeId= don't count as user work.
+  const dirty =
+    !result &&
+    (
+      selected.length > (prefilledStoreId ? 1 : 0) ||
+      (prefilledStoreId ? !selected.includes(prefilledStoreId) : selected.length > 0) ||
+      indentDays !== '21'
+    );
+  useSetDirty(dirty, 'You have an unsent generate request. Discard it?');
 
   // If the params arrive after the initial render (e.g., HMR), re-sync
   // the store selection to the prefilled value.

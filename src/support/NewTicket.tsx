@@ -28,6 +28,7 @@ import {
 } from './model';
 import { CategoryPicker } from './CategoryPicker';
 import { CCField } from './composers';
+import { useSetDirty, guardNav } from '../hooks/useUnsavedChangesGuard';
 
 export function NewTicket({
   onCancel, onCreate,
@@ -46,6 +47,20 @@ export function NewTicket({
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Anything typed / picked counts as unsaved work. Department alone doesn't
+  // count (it starts pre-filled with the first option and switching is a
+  // free action). Register with the module-level guard so the same confirm
+  // dialog the SI Portal uses fires on nav-away, browser refresh, or Cancel.
+  const isDirty =
+    subject.trim().length > 0 ||
+    description.trim().length > 0 ||
+    !!categoryPath ||
+    !!priority ||
+    cc.length > 0 ||
+    attachments.length > 0;
+  useSetDirty(isDirty, 'You have a ticket in progress. Discard it?');
+  const cancelWithGuard = () => guardNav(onCancel);
 
   const onDepartmentChange = (next: Department) => {
     if (next === department) return;
@@ -97,7 +112,7 @@ export function NewTicket({
 
   return (
     <Screen>
-      <Breadcrumb parent={{ label: 'Support', onPress: onCancel }} current="Submit a ticket" />
+      <Breadcrumb parent={{ label: 'Support', href: '/support' }} current="Submit a ticket" />
 
       <View>
         <Text style={{ color: c.fg, fontSize: font.h1, fontWeight: weight.bold as TextStyle['fontWeight'], fontFamily, lineHeight: 34 }}>
@@ -240,7 +255,7 @@ export function NewTicket({
             leading={<IconSend size={14} color="#fff" />}
             onPress={submit}
           />
-          <Button label="Discard" variant="secondary" onPress={onCancel} />
+          <Button label="Discard" variant="secondary" onPress={cancelWithGuard} />
         </View>
       </View>
 

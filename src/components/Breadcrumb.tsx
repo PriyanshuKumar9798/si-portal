@@ -11,7 +11,7 @@
 // Current label at the end is inert.
 
 import { useCallback } from 'react';
-import { View, Pressable, Text, Platform, type ViewStyle, type TextStyle } from 'react-native';
+import { View, Pressable, Text, type ViewStyle, type TextStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../theme/ThemeContext';
 import { fontFamily, weight } from '../theme/tokens';
@@ -33,36 +33,21 @@ export function Breadcrumb({ parent, current }: { parent: Crumb; current: string
   const { c } = useTheme();
   const router = useRouter();
 
-  // Back arrow. Rule:
-  //   1. If the parent supplies an onPress callback, this crumb represents
-  //      an INTRA-route hop (e.g. Support ticket detail → Support list, all
-  //      under the /support URL). Use the callback so we stay on the same
-  //      URL — falling back to router.back() would pop past /support to
-  //      whatever preceded it (a common footgun that sent the user to /sis
-  //      after opening a ticket).
-  //   2. Otherwise treat this like a real cross-route back: try history,
-  //      then fall back to a direct push to the parent's href so deep-linked
-  //      users aren't stranded.
-  const goBack = useCallback(() => {
-    guardNav(() => {
-      if (parent.onPress) { parent.onPress(); return; }
-      const canBack =
-        (typeof (router as any).canGoBack === 'function' && (router as any).canGoBack()) ||
-        (Platform.OS === 'web' && typeof window !== 'undefined' && window.history.length > 1);
-      if (canBack) {
-        router.back();
-        return;
-      }
-      if (parent.href) { router.push(parent.href as never); return; }
-    });
-  }, [router, parent.href, parent.onPress]);
-
+  // Back arrow AND parent label both jump to the parent — the crumb visibly
+  // reads "← Parent > Current", so both controls doing the same thing keeps
+  // the promise. Previously the arrow used router.back() (browser history),
+  // which surprised users who arrived via a sibling: e.g. Home → SI Portal →
+  // Generate would send the ← back to SI Portal even though the user meant
+  // "go up." Deterministic destination beats history-magic. If someone
+  // genuinely wants the previous URL, the browser's own back button still
+  // works.
   const goToParent = useCallback(() => {
     guardNav(() => {
       if (parent.onPress) { parent.onPress(); return; }
       if (parent.href)    { router.push(parent.href as never); return; }
     });
   }, [router, parent.href, parent.onPress]);
+  const goBack = goToParent;
 
   return (
     <View style={{

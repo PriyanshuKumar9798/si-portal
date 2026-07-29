@@ -165,14 +165,19 @@ export default function HomeScreen() {
       {/* ── Quick actions ─────────────────────────────────────────── */}
       <QuickActions
         onGenerateSi={() => go('/sis/generate')}
-        onRaiseTicket={() => go('/support?new=1')}
+        onRaiseTicket={() => go('/add-ticket')}
         onOpenCycle={() => go('/cycle')}
       />
 
       {/* ── Recent activity + Next indent countdown side-by-side ── */}
       <View style={{ flexDirection: twoCol ? 'row' : 'column', gap }}>
         <View style={{ flex: 2, minWidth: 0 }}>
-          <RecentActivity tickets={tickets} onOpen={(id) => go(`/support`)} sisTotal={siStats.total} sisLocked={siStats.locked} />
+          <RecentActivity
+            tickets={tickets}
+            onOpen={(id) => go(`/support?t=${encodeURIComponent(id)}`)}
+            sisTotal={siStats.total}
+            sisLocked={siStats.locked}
+          />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <NextIndentCard onOpen={() => go('/cycle')} />

@@ -937,6 +937,10 @@ function ViewToggle({ view, onView }: { view: 'list' | 'kanban'; onView: (v: 'li
 // reply can. So no drag-and-drop; each card just clicks through to
 // detail.
 
+// Column body height cap — chosen so ~5 cards fit before scrolling kicks in.
+// The column CHROME (header) is unbounded so counts + labels always show.
+const COLUMN_BODY_MAX = 520;
+
 function KanbanView({ rows, onOpen, onMove }: {
   rows: UserTicket[];
   onOpen: (id: string) => void;
@@ -957,14 +961,16 @@ function KanbanView({ rows, onOpen, onMove }: {
   // Which column is currently being dragged OVER — highlights the drop target.
   const [dropTarget, setDropTarget] = useState<UserTicket['status'] | null>(null);
   return (
-    <View style={{ flexDirection: stack ? 'column' : 'row', gap: 12 }}>
-      {onMove && (
-        <View style={{ position: 'absolute', top: -22, right: 0 }}>
-          <Text style={{ color: c.mut, fontSize: 11, fontFamily }}>
-            Drag a card between columns to change its status
-          </Text>
-        </View>
+    <View style={{ gap: 8 }}>
+      {onMove && !stack && (
+        // In-flow caption so it can't overlap the List/Kanban toggle when the
+        // hint wraps at narrow widths. Short copy; the drag affordance itself
+        // is discoverable via the grab cursor on cards.
+        <Text style={{ color: c.mut, fontSize: 11, fontFamily, paddingHorizontal: 2 }}>
+          Tip: drag a card between columns to change its status.
+        </Text>
       )}
+      <View style={{ flexDirection: stack ? 'column' : 'row', gap: 12, alignItems: 'flex-start' }}>
       {cols.map((col) => (
         <KanbanColumn
           key={col.key}
@@ -997,6 +1003,7 @@ function KanbanView({ rows, onOpen, onMove }: {
           )}
         </KanbanColumn>
       ))}
+      </View>
     </View>
   );
 }
@@ -1038,9 +1045,15 @@ function KanbanColumn({
           </Text>
         </View>
       </View>
-      <View style={{ padding: 8, gap: 8, minHeight: 200 }}>
+      {/* Scrollable card list — column height stays fixed so a "Closed"
+          column with many entries doesn't stretch the whole board taller
+          than the viewport. */}
+      <ScrollView
+        style={{ maxHeight: COLUMN_BODY_MAX }}
+        contentContainerStyle={{ padding: 8, gap: 8 }}
+      >
         {children}
-      </View>
+      </ScrollView>
     </>
   );
 
